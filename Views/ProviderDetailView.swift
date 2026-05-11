@@ -123,7 +123,7 @@ private struct BucketCard: View {
                 if let reachedType = bucket.reachedType {
                     Text(reachedType)
                         .font(.caption.weight(.medium))
-                        .foregroundStyle(.red)
+                        .foregroundStyle(LimitTheme.stateColor(for: .failed(reachedType)))
                 }
             }
 
@@ -159,41 +159,70 @@ private struct WindowUsageRow: View {
 
                 Spacer()
 
-                Text(LimitFormatters.percentString(window.usedPercent))
+                Text(usageLabel)
                     .font(.subheadline.monospacedDigit())
                     .foregroundStyle(window.usedPercent == nil ? .secondary : .primary)
             }
 
             if let usedPercent = window.usedPercent {
                 ProgressView(value: max(0, min(usedPercent / 100, 1)))
-                    .tint(color(for: usedPercent))
+                    .tint(LimitTheme.usageColor(for: usedPercent))
                     .accessibilityLabel("\(window.label) usage")
                     .accessibilityValue(LimitFormatters.percentString(window.usedPercent))
             } else {
-                ProgressView(value: 0)
-                    .tint(.secondary)
-                    .accessibilityLabel("\(window.label) usage")
-                    .accessibilityValue("Unknown")
+                UnreportedUsageBar()
             }
 
-            Text(LimitFormatters.resetText(window.resetsAt))
+            Text(footnoteLabel)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(window.label)
-        .accessibilityValue("\(LimitFormatters.percentString(window.usedPercent)). \(LimitFormatters.resetText(window.resetsAt))")
+        .accessibilityValue("\(usageAccessibilityValue). \(footnoteLabel)")
     }
 
-    private func color(for percent: Double) -> Color {
-        switch percent {
-        case 85...:
-            return .red
-        case 65..<85:
-            return .orange
-        default:
-            return .green
+    private var usageLabel: String {
+        guard let usedPercent = window.usedPercent else {
+            return "Not reported"
         }
+
+        return LimitFormatters.percentString(usedPercent)
+    }
+
+    private var usageAccessibilityValue: String {
+        guard let usedPercent = window.usedPercent else {
+            return "Usage not reported"
+        }
+
+        return LimitFormatters.percentString(usedPercent)
+    }
+
+    private var footnoteLabel: String {
+        guard window.usedPercent == nil else {
+            return LimitFormatters.resetText(window.resetsAt)
+        }
+
+        guard window.resetsAt != nil else {
+            return "Usage and reset time not reported"
+        }
+
+        return "Usage not reported · \(LimitFormatters.resetText(window.resetsAt))"
+    }
+}
+
+private struct UnreportedUsageBar: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 3, style: .continuous)
+            .fill(LimitTheme.unavailableUsageColor.opacity(0.18))
+            .overlay {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .strokeBorder(LimitTheme.unavailableUsageColor.opacity(0.32), lineWidth: 1)
+            }
+            .frame(height: 6)
+            .accessibilityLabel("Usage")
+            .accessibilityValue("Not reported")
     }
 }
 
@@ -206,17 +235,20 @@ private struct MetricTile: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+                .help(metric.title)
 
             Text(metric.value)
                 .font(.title3.weight(.semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
+                .help(metric.value)
 
             if let detail = metric.detail {
                 Text(detail)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                    .help(detail)
             }
         }
         .frame(maxWidth: .infinity, minHeight: 78, alignment: .topLeading)
@@ -244,16 +276,7 @@ private struct StatePill: View {
     }
 
     private var color: Color {
-        switch state {
-        case .loading:
-            return .secondary
-        case .ready:
-            return .green
-        case .unavailable:
-            return .orange
-        case .failed:
-            return .red
-        }
+        LimitTheme.stateColor(for: state)
     }
 }
 

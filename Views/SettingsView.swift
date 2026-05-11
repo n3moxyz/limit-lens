@@ -71,12 +71,12 @@ struct SettingsView: View {
             Section("Codex Setup") {
                 LabeledContent("CLI") {
                     Text(store.codexSetupStatus.cliLabel)
-                        .foregroundStyle(store.codexSetupStatus.cliInstalled ? Color.secondary : Color.orange)
+                        .foregroundStyle(LimitTheme.setupColor(isReady: store.codexSetupStatus.cliInstalled))
                 }
 
                 LabeledContent("ChatGPT account") {
                     Text(store.codexSetupStatus.accountLabel)
-                        .foregroundStyle(store.codexSetupStatus.signedIn ? Color.secondary : Color.orange)
+                        .foregroundStyle(LimitTheme.setupColor(isReady: store.codexSetupStatus.signedIn))
                 }
 
                 if let planType = store.codexSetupStatus.planType {
@@ -88,7 +88,7 @@ struct SettingsView: View {
 
                 LabeledContent("Rate limits") {
                     Text(store.codexSetupStatus.limitsLabel)
-                        .foregroundStyle(store.codexSetupStatus.bucketCount > 0 ? Color.secondary : Color.orange)
+                        .foregroundStyle(LimitTheme.setupColor(isReady: store.codexSetupStatus.bucketCount > 0))
                 }
 
                 Text(store.codexSetupStatus.nextStep)
@@ -103,7 +103,7 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                HStack {
+                AdaptiveSettingsActions {
                     Button {
                         store.openCodexLoginInTerminal()
                     } label: {
@@ -130,17 +130,17 @@ struct SettingsView: View {
             Section("Claude Setup") {
                 LabeledContent("Signed in") {
                     Text(store.claudeSetupStatus.isSignedIn ? "Yes" : "No")
-                        .foregroundStyle(store.claudeSetupStatus.isSignedIn ? Color.secondary : Color.orange)
+                        .foregroundStyle(LimitTheme.setupColor(isReady: store.claudeSetupStatus.isSignedIn))
                 }
 
                 LabeledContent("Bridge") {
                     Text(store.claudeSetupStatus.bridgeLabel)
-                        .foregroundStyle(store.claudeSetupStatus.bridgeInstalled ? Color.secondary : Color.orange)
+                        .foregroundStyle(LimitTheme.setupColor(isReady: store.claudeSetupStatus.bridgeInstalled))
                 }
 
                 LabeledContent("Live cache") {
                     Text(store.claudeSetupStatus.cacheLabel)
-                        .foregroundStyle(store.claudeSetupStatus.cacheHasFreshLimits ? Color.secondary : Color.orange)
+                        .foregroundStyle(LimitTheme.setupColor(isReady: store.claudeSetupStatus.cacheHasFreshLimits))
                 }
 
                 Text(store.claudeSetupStatus.nextStep)
@@ -155,7 +155,7 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                HStack {
+                AdaptiveSettingsActions {
                     Button {
                         store.openClaudeLoginInTerminal()
                     } label: {
@@ -205,6 +205,26 @@ struct SettingsView: View {
         .frame(maxWidth: 620, alignment: .leading)
         .task {
             await store.refreshSetupStatuses()
+        }
+    }
+}
+
+private struct AdaptiveSettingsActions<Content: View>: View {
+    private let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                content
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                content
+            }
         }
     }
 }

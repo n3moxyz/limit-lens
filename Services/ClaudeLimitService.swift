@@ -1,6 +1,8 @@
 import Foundation
 
 struct ClaudeLimitService {
+    private static let localUsageCache = ClaudeLocalUsageCache()
+
     func fetchSetupStatus() async -> ClaudeSetupStatus {
         let auth = await readAuthStatus()
         let bridgeInstalled = ClaudeStatuslineBridgeInstaller().isInstalled
@@ -83,9 +85,7 @@ struct ClaudeLimitService {
     }
 
     private func scanLocalUsage() async -> ClaudeLocalUsage {
-        await Task.detached(priority: .utility) {
-            ClaudeUsageScanner().scan()
-        }.value
+        await Self.localUsageCache.current()
     }
 
     private func readStatuslineUsage() async -> ClaudeStatuslineUsage {
@@ -169,6 +169,29 @@ struct ClaudeLimitService {
         }
 
         return "Recent model: \(dominantModel) · \(files)"
+    }
+}
+
+private actor ClaudeLocalUsageCache {
+    private let freshnessInterval: TimeInterval = 5 * 60
+    private var cachedUsage: ClaudeLocalUsage?
+    private var cachedAt: Date?
+
+    func current(now: Date = Date()) async -> ClaudeLocalUsage {
+        if let cachedUsage,
+           let cachedAt,
+           now.timeIntervalSince(cachedAt) < freshnessInterval {
+            return cachedUsage
+        }
+
+        let usage = await Task.detached(priority: .utility) {
+            ClaudeUsageScanner().scan()
+        }.value
+
+        cachedUsage = usage
+        cachedAt = now
+
+        return usage
     }
 }
 

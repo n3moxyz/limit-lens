@@ -166,6 +166,11 @@ final class LimitStore: ObservableObject {
     }
 
     func refreshCodexSetupStatus() async {
+        if let status = codexSetupStatus(from: codex) {
+            codexSetupStatus = status
+            return
+        }
+
         codexSetupStatus = await codexService.fetchSetupStatus()
     }
 
@@ -174,10 +179,14 @@ final class LimitStore: ObservableObject {
     }
 
     func refreshSetupStatuses() async {
-        async let codexStatus = codexService.fetchSetupStatus()
         async let claudeStatus = claudeService.fetchSetupStatus()
 
-        codexSetupStatus = await codexStatus
+        if let status = codexSetupStatus(from: codex) {
+            codexSetupStatus = status
+        } else {
+            codexSetupStatus = await codexService.fetchSetupStatus()
+        }
+
         claudeSetupStatus = await claudeStatus
     }
 
@@ -236,7 +245,6 @@ final class LimitStore: ObservableObject {
 
         codex = await codexSnapshot
         claude = await claudeSnapshot
-        await refreshSetupStatuses()
         await syncResetNotifications()
     }
 
@@ -251,5 +259,23 @@ final class LimitStore: ObservableObject {
             claude: claude,
             enabled: resetNotificationsEnabled
         )
+    }
+
+    private func codexSetupStatus(from snapshot: ProviderSnapshot) -> CodexSetupStatus? {
+        guard snapshot.provider == .codex else {
+            return nil
+        }
+
+        if case .ready = snapshot.state, !snapshot.buckets.isEmpty {
+            return CodexSetupStatus(
+                cliInstalled: true,
+                signedIn: true,
+                planType: snapshot.planType,
+                bucketCount: snapshot.buckets.count,
+                detail: nil
+            )
+        }
+
+        return nil
     }
 }

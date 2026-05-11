@@ -56,7 +56,7 @@ struct SuggestedRouteCard: View {
     }
 
     private var tint: Color {
-        SuggestedRouteColor.color(named: route.tintName)
+        LimitTheme.suggestedRouteColor(named: route.tintName)
     }
 }
 
@@ -73,16 +73,19 @@ struct SuggestedRouteMini: View {
         VStack(alignment: .leading, spacing: 6) {
             Label(route.title, systemImage: route.systemImage)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(SuggestedRouteColor.color(named: route.tintName))
+                .foregroundStyle(LimitTheme.suggestedRouteColor(named: route.tintName))
+                .help(route.title)
 
             Text(route.recommendation)
                 .font(.caption.weight(.medium))
                 .lineLimit(2)
+                .help(route.recommendation)
 
             Text(route.rationale)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
+                .help(route.rationale)
 
             if showsDemoControls {
                 DemoControlsDisclosure(
@@ -180,6 +183,7 @@ private struct DemoEventControls: View {
                 onSimulateLimitPressure()
             } label: {
                 Image(systemName: "exclamationmark.triangle")
+                    .frame(width: 30, height: 28)
             }
             .buttonStyle(.borderless)
             .controlSize(.small)
@@ -192,6 +196,7 @@ private struct DemoEventControls: View {
                 onSimulateResetAvailable()
             } label: {
                 Image(systemName: "checkmark.circle")
+                    .frame(width: 30, height: 28)
             }
             .buttonStyle(.borderless)
             .controlSize(.small)
@@ -202,24 +207,5 @@ private struct DemoEventControls: View {
         }
         .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
-    }
-}
-
-private enum SuggestedRouteColor {
-    static func color(named name: String) -> Color {
-        switch name {
-        case "blue":
-            return .blue
-        case "green":
-            return .green
-        case "orange":
-            return .orange
-        case "purple":
-            return .purple
-        case "red":
-            return .red
-        default:
-            return .secondary
-        }
     }
 }

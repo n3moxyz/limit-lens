@@ -93,7 +93,7 @@ struct MenuBarPanel: View {
     private func focusMainWindow() {
         NSApp.activate(ignoringOtherApps: true)
 
-        guard let window = NSApp.windows.first(where: { $0.title == "Limit Lens" }) else {
+        guard let window = NSApp.windows.first(where: { $0.identifier == LimitWindowIdentifiers.main }) else {
             return
         }
 
@@ -121,7 +121,7 @@ private struct MiniProvider: View {
 
             if let window = primaryWindow, let used = window.usedPercent {
                 ProgressView(value: max(0, min(used / 100, 1)))
-                    .tint(color(for: used))
+                    .tint(LimitTheme.usageColor(for: used))
                 Text(
                     LimitFormatters.exactResetText(
                         window.resetsAt,
@@ -136,6 +136,7 @@ private struct MiniProvider: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .help(weeklyFallbackText)
             }
         }
         .padding(.vertical, 2)
@@ -182,14 +183,4 @@ private struct MiniProvider: View {
         return "Weekly"
     }
 
-    private func color(for percent: Double) -> Color {
-        switch percent {
-        case 85...:
-            return .red
-        case 65..<85:
-            return .orange
-        default:
-            return .green
-        }
-    }
 }

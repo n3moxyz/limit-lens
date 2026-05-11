@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ContentView: View {
@@ -57,6 +58,7 @@ struct ContentView: View {
                 SettingsDetailView()
             }
         }
+        .background(MainWindowIdentifierView())
     }
 
     private func selectPane(_ pane: MainPane) {
@@ -94,7 +96,7 @@ private struct MainActionStrip: View {
                 onToggleDemoMode()
             } label: {
                 Image(systemName: "sparkles")
-                    .frame(width: 18, height: 18)
+                    .frame(width: 32, height: 30)
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
@@ -109,7 +111,7 @@ private struct MainActionStrip: View {
                 onRefresh()
             } label: {
                 Image(systemName: "arrow.clockwise")
-                    .frame(width: 18, height: 18)
+                    .frame(width: 32, height: 30)
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
@@ -134,7 +136,7 @@ private struct SidebarFooter: View {
                 onSettings()
             } label: {
                 Image(systemName: "gearshape")
-                    .frame(width: 28, height: 28)
+                    .frame(width: 34, height: 32)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -174,6 +176,24 @@ private struct SettingsDetailView: View {
     }
 }
 
+private struct MainWindowIdentifierView: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        setIdentifier(on: view)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        setIdentifier(on: nsView)
+    }
+
+    private func setIdentifier(on view: NSView) {
+        DispatchQueue.main.async {
+            view.window?.identifier = LimitWindowIdentifiers.main
+        }
+    }
+}
+
 private struct ProviderRow: View {
     var snapshot: ProviderSnapshot
 
@@ -191,6 +211,7 @@ private struct ProviderRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .help(rowSubtitle)
             }
         }
         .padding(.vertical, 2)
