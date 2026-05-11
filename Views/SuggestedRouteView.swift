@@ -2,6 +2,9 @@ import SwiftUI
 
 struct SuggestedRouteCard: View {
     var route: SuggestedRoute
+    var showsDemoControls = false
+    var onSimulateLimitPressure: () -> Void = {}
+    var onSimulateResetAvailable: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -24,6 +27,13 @@ struct SuggestedRouteCard: View {
                 }
 
                 Spacer()
+
+                if showsDemoControls {
+                    DemoEventControls(
+                        onSimulateLimitPressure: onSimulateLimitPressure,
+                        onSimulateResetAvailable: onSimulateResetAvailable
+                    )
+                }
             }
 
             Text(route.rationale)
@@ -33,7 +43,7 @@ struct SuggestedRouteCard: View {
         }
         .padding(14)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("Suggested route")
         .accessibilityValue("\(route.title). \(route.recommendation). \(route.rationale)")
         .accessibilityIdentifier("suggested-route-card")
@@ -46,6 +56,9 @@ struct SuggestedRouteCard: View {
 
 struct SuggestedRouteMini: View {
     var route: SuggestedRoute
+    var showsDemoControls = false
+    var onSimulateLimitPressure: () -> Void = {}
+    var onSimulateResetAvailable: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -61,14 +74,56 @@ struct SuggestedRouteMini: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(3)
+
+            if showsDemoControls {
+                DemoEventControls(
+                    onSimulateLimitPressure: onSimulateLimitPressure,
+                    onSimulateResetAvailable: onSimulateResetAvailable
+                )
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("Suggested route")
         .accessibilityValue("\(route.title). \(route.recommendation). \(route.rationale)")
         .accessibilityIdentifier("menu-suggested-route")
+    }
+}
+
+private struct DemoEventControls: View {
+    var onSimulateLimitPressure: () -> Void
+    var onSimulateResetAvailable: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Button {
+                onSimulateLimitPressure()
+            } label: {
+                Image(systemName: "exclamationmark.triangle")
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .help("Demo: Codex approaching limit")
+            .accessibilityLabel("Demo approaching limit")
+            .accessibilityHint("Updates demo data and sends a limit pressure notification")
+            .accessibilityIdentifier("demo-limit-pressure-button")
+
+            Button {
+                onSimulateResetAvailable()
+            } label: {
+                Image(systemName: "checkmark.circle")
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .help("Demo: Codex reset available")
+            .accessibilityLabel("Demo reset available")
+            .accessibilityHint("Updates demo data and sends a reset available notification")
+            .accessibilityIdentifier("demo-reset-available-button")
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
     }
 }
 

@@ -1,8 +1,9 @@
 import Foundation
 
 struct DemoLimitService {
-    func codexSnapshot(now: Date = Date()) -> ProviderSnapshot {
-        let fiveHourReset = now.addingTimeInterval(74 * 60)
+    func codexSnapshot(now: Date = Date(), scenario: DemoLimitScenario = .scarce) -> ProviderSnapshot {
+        let profile = codexProfile(for: scenario)
+        let fiveHourReset = now.addingTimeInterval(profile.resetInterval)
         let weeklyReset = now.addingTimeInterval((2 * 24 * 60 * 60) + (7 * 60 * 60))
 
         let buckets = [
@@ -10,11 +11,11 @@ struct DemoLimitService {
                 id: "codex",
                 title: "Codex",
                 planType: "ChatGPT Pro",
-                reachedType: nil,
+                reachedType: profile.reachedType,
                 windows: [
                     LimitWindow(
                         label: "5-hour",
-                        usedPercent: 82,
+                        usedPercent: profile.usedPercent,
                         durationMinutes: 300,
                         resetsAt: fiveHourReset
                     ),
@@ -32,8 +33,8 @@ struct DemoLimitService {
         return ProviderSnapshot(
             provider: .codex,
             state: .ready,
-            headline: "82% used",
-            detail: "Demo data: Codex is getting scarce, so save it for computer-use tasks.",
+            headline: "\(Int(profile.usedPercent.rounded()))% used",
+            detail: profile.detail,
             planType: "ChatGPT Pro",
             updatedAt: now,
             buckets: buckets,
@@ -72,8 +73,10 @@ struct DemoLimitService {
         )
     }
 
-    func claudeSnapshot(now: Date = Date()) -> ProviderSnapshot {
-        ProviderSnapshot(
+    func claudeSnapshot(now: Date = Date(), scenario: DemoLimitScenario = .scarce) -> ProviderSnapshot {
+        let claudeFiveHourUsage: Double = scenario == .available ? 29 : 24
+
+        return ProviderSnapshot(
             provider: .claude,
             state: .ready,
             headline: "Weekly all-model 31% used",
@@ -89,7 +92,7 @@ struct DemoLimitService {
                     windows: [
                         LimitWindow(
                             label: "Current session / 5-hour included usage",
-                            usedPercent: 24,
+                            usedPercent: claudeFiveHourUsage,
                             durationMinutes: 300,
                             resetsAt: now.addingTimeInterval(53 * 60)
                         ),
@@ -158,4 +161,37 @@ struct DemoLimitService {
             ]
         )
     }
+
+    private func codexProfile(for scenario: DemoLimitScenario) -> CodexDemoProfile {
+        switch scenario {
+        case .scarce:
+            return CodexDemoProfile(
+                usedPercent: 82,
+                resetInterval: 74 * 60,
+                reachedType: nil,
+                detail: "Demo data: Codex is getting scarce, so save it for computer-use tasks."
+            )
+        case .limited:
+            return CodexDemoProfile(
+                usedPercent: 97,
+                resetInterval: 2 * 60,
+                reachedType: "Approaching",
+                detail: "Demo event: Codex is almost limited. Route planning and review to Claude."
+            )
+        case .available:
+            return CodexDemoProfile(
+                usedPercent: 7,
+                resetInterval: 5 * 60 * 60,
+                reachedType: nil,
+                detail: "Demo event: Codex reset is available again for computer-use tasks."
+            )
+        }
+    }
+}
+
+private struct CodexDemoProfile {
+    var usedPercent: Double
+    var resetInterval: TimeInterval
+    var reachedType: String?
+    var detail: String
 }

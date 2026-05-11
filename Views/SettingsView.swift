@@ -41,6 +41,25 @@ struct SettingsView: View {
                 .accessibilityIdentifier("settings-refresh-limits-button")
             }
 
+            Section("Notifications") {
+                Toggle(
+                    isOn: Binding(
+                        get: { store.resetNotificationsEnabled },
+                        set: { store.setResetNotificationsEnabled($0) }
+                    )
+                ) {
+                    Label("Reset Alerts", systemImage: "bell")
+                }
+                .accessibilityLabel("Reset alerts")
+                .accessibilityHint("Schedules a notification when a usage window resets")
+                .accessibilityIdentifier("reset-alerts-toggle")
+
+                Text("Limit Lens can notify you when a reported Codex or Claude window becomes available again.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Section("Command Sources") {
                 LabeledContent("Codex") {
                     Text("codex app-server")

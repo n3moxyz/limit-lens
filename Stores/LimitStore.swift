@@ -3,6 +3,7 @@ import Foundation
 @MainActor
 final class LimitStore: ObservableObject {
     private static let demoModeDefaultsKey = "LimitLensDemoModeEnabled"
+    private static let resetNotificationsDefaultsKey = "LimitLensResetNotificationsEnabled"
 
     @Published var codex = ProviderSnapshot.loading(.codex)
     @Published var claude = ProviderSnapshot.loading(.claude)
@@ -13,12 +14,19 @@ final class LimitStore: ObservableObject {
             UserDefaults.standard.set(isDemoMode, forKey: Self.demoModeDefaultsKey)
         }
     }
+    @Published var resetNotificationsEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(resetNotificationsEnabled, forKey: Self.resetNotificationsDefaultsKey)
+        }
+    }
 
     private let codexService = CodexLimitService()
     private let claudeService = ClaudeLimitService()
     private let demoService = DemoLimitService()
     private let routeEvaluator = SuggestedRouteEvaluator()
+    private let resetNotificationService = ResetNotificationService()
     private var pollingTask: Task<Void, Never>?
+    private var demoScenario: DemoLimitScenario = .scarce
 
     init() {
         let requestedDemoMode = ProcessInfo.processInfo.arguments.contains("--demo")
@@ -26,6 +34,7 @@ final class LimitStore: ObservableObject {
 
         isDemoMode = requestedDemoMode
             || UserDefaults.standard.bool(forKey: Self.demoModeDefaultsKey)
+        resetNotificationsEnabled = UserDefaults.standard.object(forKey: Self.resetNotificationsDefaultsKey) as? Bool ?? true
     }
 
     var selectedSnapshot: ProviderSnapshot {
@@ -77,9 +86,48 @@ final class LimitStore: ObservableObject {
         guard isDemoMode != enabled else { return }
 
         isDemoMode = enabled
+        demoScenario = .scarce
 
         Task {
             await refreshNow()
+        }
+    }
+
+    func setResetNotificationsEnabled(_ enabled: Bool) {
+        guard resetNotificationsEnabled != enabled else { return }
+
+        resetNotificationsEnabled = enabled
+
+        Task {
+            if enabled {
+                await syncResetNotifications()
+            } else {
+                await resetNotificationService.cancelResetNotifications()
+            }
+        }
+    }
+
+    func simulateDemoLimitPressure() {
+        guard isDemoMode else { return }
+
+        demoScenario = .limited
+        applyDemoSnapshots(now: Date())
+
+        Task {
+            await resetNotificationService.deliverDemoLimitPressure()
+            await syncResetNotifications()
+        }
+    }
+
+    func simulateDemoResetAvailable() {
+        guard isDemoMode else { return }
+
+        demoScenario = .available
+        applyDemoSnapshots(now: Date())
+
+        Task {
+            await resetNotificationService.deliverDemoResetAvailable()
+            await syncResetNotifications()
         }
     }
 
@@ -91,9 +139,8 @@ final class LimitStore: ObservableObject {
         defer { isRefreshing = false }
 
         if demoMode {
-            let now = Date()
-            codex = demoService.codexSnapshot(now: now)
-            claude = demoService.claudeSnapshot(now: now)
+            applyDemoSnapshots(now: Date())
+            await syncResetNotifications()
             return
         }
 
@@ -102,5 +149,19 @@ final class LimitStore: ObservableObject {
 
         codex = await codexSnapshot
         claude = await claudeSnapshot
+        await syncResetNotifications()
+    }
+
+    private func applyDemoSnapshots(now: Date) {
+        codex = demoService.codexSnapshot(now: now, scenario: demoScenario)
+        claude = demoService.claudeSnapshot(now: now, scenario: demoScenario)
+    }
+
+    private func syncResetNotifications() async {
+        await resetNotificationService.syncResetNotifications(
+            codex: codex,
+            claude: claude,
+            enabled: resetNotificationsEnabled
+        )
     }
 }

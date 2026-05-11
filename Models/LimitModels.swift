@@ -86,6 +86,12 @@ struct SuggestedRoute: Equatable {
     var tintName: String
 }
 
+enum DemoLimitScenario {
+    case scarce
+    case limited
+    case available
+}
+
 struct ClaudeLocalUsage: Equatable {
     var promptsFiveHours: Int
     var assistantResponsesFiveHours: Int

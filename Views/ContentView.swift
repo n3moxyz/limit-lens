@@ -43,7 +43,13 @@ struct ContentView: View {
                 }
             }
         } detail: {
-            ProviderDetailView(snapshot: store.selectedSnapshot, route: store.suggestedRoute)
+            ProviderDetailView(
+                snapshot: store.selectedSnapshot,
+                route: store.suggestedRoute,
+                showsDemoControls: store.isDemoMode,
+                onSimulateLimitPressure: store.simulateDemoLimitPressure,
+                onSimulateResetAvailable: store.simulateDemoResetAvailable
+            )
         }
     }
 

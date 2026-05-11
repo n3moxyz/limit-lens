@@ -3,11 +3,19 @@ import SwiftUI
 struct ProviderDetailView: View {
     var snapshot: ProviderSnapshot
     var route: SuggestedRoute
+    var showsDemoControls = false
+    var onSimulateLimitPressure: () -> Void = {}
+    var onSimulateResetAvailable: () -> Void = {}
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                SuggestedRouteCard(route: route)
+                SuggestedRouteCard(
+                    route: route,
+                    showsDemoControls: showsDemoControls,
+                    onSimulateLimitPressure: onSimulateLimitPressure,
+                    onSimulateResetAvailable: onSimulateResetAvailable
+                )
 
                 HeaderView(snapshot: snapshot)
 

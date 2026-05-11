@@ -39,7 +39,12 @@ struct MenuBarPanel: View {
             .accessibilityHint("Switches between deterministic sample data and live command output")
             .accessibilityIdentifier("menu-demo-mode-toggle")
 
-            SuggestedRouteMini(route: store.suggestedRoute)
+            SuggestedRouteMini(
+                route: store.suggestedRoute,
+                showsDemoControls: store.isDemoMode,
+                onSimulateLimitPressure: store.simulateDemoLimitPressure,
+                onSimulateResetAvailable: store.simulateDemoResetAvailable
+            )
 
             MiniProvider(snapshot: store.codex)
             Divider()
