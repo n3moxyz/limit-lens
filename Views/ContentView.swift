@@ -2,57 +2,68 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var store: LimitStore
+    @State private var selectedPane: MainPane = .provider(.codex)
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $store.selectedProvider) {
-                ForEach(ProviderKind.allCases) { provider in
-                    ProviderRow(snapshot: snapshot(for: provider))
-                        .tag(provider)
-                }
-            }
-            .listStyle(.sidebar)
-            .navigationTitle("Limits")
-            .toolbar {
-                ToolbarItemGroup {
-                    Toggle(
-                        isOn: Binding(
-                            get: { store.isDemoMode },
-                            set: { store.setDemoMode($0) }
-                        )
-                    ) {
-                        Label("Demo Mode", systemImage: "sparkles")
+            VStack(spacing: 0) {
+                List(selection: Binding(
+                    get: { selectedPane },
+                    set: { selectPane($0) }
+                )) {
+                    ForEach(ProviderKind.allCases) { provider in
+                        ProviderRow(snapshot: snapshot(for: provider))
+                            .tag(MainPane.provider(provider))
                     }
-                    .toggleStyle(.button)
-                    .help("Use deterministic sample data")
-                    .accessibilityLabel("Demo mode")
-                    .accessibilityValue(store.isDemoMode ? "On" : "Off")
-                    .accessibilityHint("Switches between deterministic sample data and live command output")
-                    .accessibilityIdentifier("toolbar-demo-mode-toggle")
+                }
+                .listStyle(.sidebar)
 
-                    Button {
-                        Task { await store.refreshNow() }
-                    } label: {
-                        Label("Refresh Limits", systemImage: "arrow.clockwise")
-                    }
-                    .disabled(store.isRefreshing)
-                    .help("Refresh limits")
-                    .accessibilityLabel("Refresh limits")
-                    .accessibilityHint("Checks Codex and Claude usage limits now")
-                    .accessibilityIdentifier("refresh-limits-button")
-                }
+                Divider()
+
+                SidebarFooter(
+                    isSettingsSelected: selectedPane == .settings,
+                    onSettings: { selectPane(.settings) }
+                )
             }
+            .navigationTitle("Limits")
         } detail: {
-            ProviderDetailView(
-                snapshot: store.selectedSnapshot,
-                route: store.suggestedRoute,
-                showsDemoControls: store.isDemoMode,
-                notificationStatusMessage: store.notificationStatusMessage,
-                showsNotificationSettingsAction: store.showsNotificationSettingsAction,
-                onSimulateLimitPressure: store.simulateDemoLimitPressure,
-                onSimulateResetAvailable: store.simulateDemoResetAvailable,
-                onOpenNotificationSettings: store.openNotificationSettings
-            )
+            switch selectedPane {
+            case .provider:
+                VStack(spacing: 0) {
+                    MainActionStrip(
+                        isDemoMode: store.isDemoMode,
+                        isRefreshing: store.isRefreshing,
+                        onToggleDemoMode: { store.setDemoMode(!store.isDemoMode) },
+                        onRefresh: {
+                            Task { await store.refreshNow() }
+                        }
+                    )
+
+                    Divider()
+
+                    ProviderDetailView(
+                        snapshot: store.selectedSnapshot,
+                        route: store.suggestedRoute,
+                        showsDemoControls: store.isDemoMode,
+                        notificationStatusMessage: store.notificationStatusMessage,
+                        showsNotificationSettingsAction: store.showsNotificationSettingsAction,
+                        onSimulateLimitPressure: store.simulateDemoLimitPressure,
+                        onSimulateResetAvailable: store.simulateDemoResetAvailable,
+                        onOpenNotificationSettings: store.openNotificationSettings
+                    )
+                }
+
+            case .settings:
+                SettingsDetailView()
+            }
+        }
+    }
+
+    private func selectPane(_ pane: MainPane) {
+        selectedPane = pane
+
+        if case let .provider(provider) = pane {
+            store.selectedProvider = provider
         }
     }
 
@@ -61,6 +72,105 @@ struct ContentView: View {
         case .codex: store.codex
         case .claude: store.claude
         }
+    }
+}
+
+private enum MainPane: Hashable {
+    case provider(ProviderKind)
+    case settings
+}
+
+private struct MainActionStrip: View {
+    var isDemoMode: Bool
+    var isRefreshing: Bool
+    var onToggleDemoMode: () -> Void
+    var onRefresh: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Spacer()
+
+            Button {
+                onToggleDemoMode()
+            } label: {
+                Image(systemName: "sparkles")
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .tint(isDemoMode ? .accentColor : .secondary)
+            .help(isDemoMode ? "Turn off demo mode" : "Turn on demo mode")
+            .accessibilityLabel("Demo mode")
+            .accessibilityValue(isDemoMode ? "On" : "Off")
+            .accessibilityHint("Switches between deterministic sample data and live command output")
+            .accessibilityIdentifier("main-demo-mode-button")
+
+            Button {
+                onRefresh()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(isRefreshing)
+            .help("Refresh limits")
+            .accessibilityLabel("Refresh limits")
+            .accessibilityHint("Checks Codex and Claude usage limits now")
+            .accessibilityIdentifier("main-refresh-limits-button")
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 8)
+    }
+}
+
+private struct SidebarFooter: View {
+    var isSettingsSelected: Bool
+    var onSettings: () -> Void
+
+    var body: some View {
+        HStack {
+            Button {
+                onSettings()
+            } label: {
+                Image(systemName: "gearshape")
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .background(
+                isSettingsSelected ? Color.accentColor.opacity(0.18) : Color.clear,
+                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+            )
+            .foregroundStyle(isSettingsSelected ? .primary : .secondary)
+            .help("Settings")
+            .accessibilityLabel("Settings")
+            .accessibilityIdentifier("sidebar-settings-button")
+
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+}
+
+private struct SettingsDetailView: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Settings")
+                    .font(.title2.weight(.semibold))
+
+                Spacer()
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 18)
+
+            Divider()
+
+            SettingsView()
+        }
+        .accessibilityIdentifier("settings-detail-view")
     }
 }
 

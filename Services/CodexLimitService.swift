@@ -1,6 +1,41 @@
 import Foundation
 
 struct CodexLimitService {
+    func fetchSetupStatus() async -> CodexSetupStatus {
+        do {
+            let result = try await ShellRunner.run(codexProbeCommand, timeout: 12)
+            let parsed = parseProbeOutput(result.stdout)
+
+            if isMissingCodex(result) {
+                return CodexSetupStatus(
+                    cliInstalled: false,
+                    signedIn: false,
+                    planType: nil,
+                    bucketCount: 0,
+                    detail: "`codex` command was not found."
+                )
+            }
+
+            let detail = setupDetail(result: result, parsed: parsed)
+
+            return CodexSetupStatus(
+                cliInstalled: true,
+                signedIn: parsed.accountReceived,
+                planType: parsed.accountPlan,
+                bucketCount: parsed.buckets.count,
+                detail: detail
+            )
+        } catch {
+            return CodexSetupStatus(
+                cliInstalled: false,
+                signedIn: false,
+                planType: nil,
+                bucketCount: 0,
+                detail: error.localizedDescription
+            )
+        }
+    }
+
     func fetchSnapshot() async -> ProviderSnapshot {
         do {
             let result = try await ShellRunner.run(codexProbeCommand, timeout: 12)
@@ -238,6 +273,36 @@ struct CodexLimitService {
         result.status == 127
             || result.stderr.localizedCaseInsensitiveContains("command not found: codex")
             || result.stderr.localizedCaseInsensitiveContains("codex: command not found")
+    }
+
+    private func setupDetail(result: ShellResult, parsed: CodexProbeParseResult) -> String? {
+        if let error = parsed.errorMessages.first {
+            return truncated(error)
+        }
+
+        if parsed.buckets.isEmpty {
+            if result.status != 0, let stderr = trimmed(result.stderr) {
+                return truncated(stderr)
+            }
+
+            return "Signed in, but rate limits were not returned. Try Refresh Limits again after using Codex."
+        }
+
+        return nil
+    }
+
+    private func truncated(_ value: String) -> String {
+        let clean = value
+            .split(whereSeparator: \.isNewline)
+            .map(String.init)
+            .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            ?? value
+
+        if clean.count <= 120 {
+            return clean
+        }
+
+        return "\(clean.prefix(117))..."
     }
 
     private func trimmed(_ value: String) -> String? {

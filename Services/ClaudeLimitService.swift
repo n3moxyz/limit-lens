@@ -1,6 +1,30 @@
 import Foundation
 
 struct ClaudeLimitService {
+    func fetchSetupStatus() async -> ClaudeSetupStatus {
+        let auth = await readAuthStatus()
+        let bridgeInstalled = ClaudeStatuslineBridgeInstaller().isInstalled
+        let cacheSummary = await Task.detached(priority: .utility) {
+            ClaudeStatuslineCacheReader().readSummary()
+        }.value
+
+        return ClaudeSetupStatus(
+            isSignedIn: auth.loggedIn,
+            accountLabel: auth.accountLabel,
+            authDetail: auth.providerLabel,
+            bridgeInstalled: bridgeInstalled,
+            cacheExists: cacheSummary.exists,
+            cacheCapturedAt: cacheSummary.capturedAt,
+            cacheHasFreshLimits: cacheSummary.hasFreshLimits
+        )
+    }
+
+    func installStatuslineBridge() async throws {
+        try await Task.detached(priority: .utility) {
+            try ClaudeStatuslineBridgeInstaller().install()
+        }.value
+    }
+
     func fetchSnapshot() async -> ProviderSnapshot {
         let auth = await readAuthStatus()
         let liveUsage = await readStatuslineUsage()
@@ -224,24 +248,76 @@ private struct ClaudeStatuslineWindow: Equatable {
 
 private struct ClaudeStatuslineCacheReader {
     func read() -> ClaudeStatuslineUsage {
+        guard let cacheData = readCacheData() else {
+            return ClaudeStatuslineUsage(capturedAt: nil, modelDisplayName: nil, fiveHour: nil, sevenDay: nil)
+        }
+
+        let now = Date()
+
+        return ClaudeStatuslineUsage(
+            capturedAt: cacheData.capturedAt,
+            modelDisplayName: cacheData.cache.model?.displayName,
+            fiveHour: freshWindow(cacheData.cache.rateLimits?.fiveHour?.model, now: now),
+            sevenDay: freshWindow(cacheData.cache.rateLimits?.sevenDay?.model, now: now)
+        )
+    }
+
+    func readSummary() -> ClaudeStatuslineCacheSummary {
+        guard let cacheData = readCacheData() else {
+            return ClaudeStatuslineCacheSummary(exists: false, capturedAt: nil, hasFreshLimits: false)
+        }
+
+        let now = Date()
+        let fiveHour = freshWindow(cacheData.cache.rateLimits?.fiveHour?.model, now: now)
+        let sevenDay = freshWindow(cacheData.cache.rateLimits?.sevenDay?.model, now: now)
+
+        return ClaudeStatuslineCacheSummary(
+            exists: true,
+            capturedAt: cacheData.capturedAt,
+            hasFreshLimits: fiveHour?.usedPercentage != nil || sevenDay?.usedPercentage != nil
+        )
+    }
+
+    private func readCacheData() -> ClaudeStatuslineCacheData? {
         let cacheURL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/LimitLens/claude-rate-limits.json")
 
         guard let data = try? Data(contentsOf: cacheURL),
               let cache = try? JSONDecoder().decode(ClaudeStatuslineCacheDTO.self, from: data) else {
-            return ClaudeStatuslineUsage(capturedAt: nil, modelDisplayName: nil, fiveHour: nil, sevenDay: nil)
+            return nil
         }
 
         let capturedAt = cache.capturedAt.map { Date(timeIntervalSince1970: $0) }
             ?? (try? FileManager.default.attributesOfItem(atPath: cacheURL.path)[.modificationDate] as? Date)
 
-        return ClaudeStatuslineUsage(
+        return ClaudeStatuslineCacheData(
+            cache: cache,
             capturedAt: capturedAt,
-            modelDisplayName: cache.model?.displayName,
-            fiveHour: cache.rateLimits?.fiveHour?.model,
-            sevenDay: cache.rateLimits?.sevenDay?.model
+            url: cacheURL
         )
     }
+
+    private func freshWindow(_ window: ClaudeStatuslineWindow?, now: Date) -> ClaudeStatuslineWindow? {
+        guard let window else { return nil }
+
+        if let resetsAt = window.resetsAt, resetsAt <= now {
+            return nil
+        }
+
+        return window
+    }
+}
+
+private struct ClaudeStatuslineCacheData {
+    var cache: ClaudeStatuslineCacheDTO
+    var capturedAt: Date?
+    var url: URL
+}
+
+private struct ClaudeStatuslineCacheSummary {
+    var exists: Bool
+    var capturedAt: Date?
+    var hasFreshLimits: Bool
 }
 
 private struct ClaudeStatuslineCacheDTO: Decodable {
@@ -288,6 +364,138 @@ private struct ClaudeStatuslineWindowDTO: Decodable {
     private enum CodingKeys: String, CodingKey {
         case usedPercentage = "used_percentage"
         case resetsAt = "resets_at"
+    }
+}
+
+private struct ClaudeStatuslineBridgeInstaller {
+    private var fileManager: FileManager { .default }
+
+    var isInstalled: Bool {
+        guard fileManager.fileExists(atPath: bridgeFile.path),
+              let settings = settingsDictionary(),
+              let statusLine = settings["statusLine"] as? [String: Any],
+              let command = statusLine["command"] as? String else {
+            return false
+        }
+
+        return command.contains("limit-lens-statusline-bridge.sh")
+    }
+
+    func install() throws {
+        try fileManager.createDirectory(at: claudeDirectory, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: backupDirectory, withIntermediateDirectories: true)
+
+        if !fileManager.fileExists(atPath: settingsFile.path) {
+            try "{}\n".write(to: settingsFile, atomically: true, encoding: .utf8)
+        }
+
+        var settings = settingsDictionary() ?? [:]
+        let existingCommand = ((settings["statusLine"] as? [String: Any])?["command"] as? String) ?? ""
+
+        if !existingCommand.isEmpty, !existingCommand.contains("limit-lens-statusline-bridge.sh") {
+            try existingCommand
+                .appending("\n")
+                .write(to: originalCommandFile, atomically: true, encoding: .utf8)
+        }
+
+        try bridgeScript.write(to: bridgeFile, atomically: true, encoding: .utf8)
+        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: bridgeFile.path)
+
+        let backupURL = backupDirectory
+            .appendingPathComponent("settings.limit-lens.\(Self.timestamp.string(from: Date())).json")
+        try fileManager.copyItem(at: settingsFile, to: backupURL)
+
+        settings["statusLine"] = [
+            "type": "command",
+            "command": #"/bin/sh "$HOME/.claude/limit-lens-statusline-bridge.sh""#
+        ]
+
+        let output = try JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys])
+        var outputText = String(data: output, encoding: .utf8) ?? "{}"
+        outputText.append("\n")
+        try outputText.write(to: settingsFile, atomically: true, encoding: .utf8)
+    }
+
+    private var claudeDirectory: URL {
+        fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".claude")
+    }
+
+    private var backupDirectory: URL {
+        claudeDirectory.appendingPathComponent("backups")
+    }
+
+    private var settingsFile: URL {
+        claudeDirectory.appendingPathComponent("settings.json")
+    }
+
+    private var bridgeFile: URL {
+        claudeDirectory.appendingPathComponent("limit-lens-statusline-bridge.sh")
+    }
+
+    private var originalCommandFile: URL {
+        claudeDirectory.appendingPathComponent("limit-lens-statusline-original-command")
+    }
+
+    private func settingsDictionary() -> [String: Any]? {
+        guard let data = try? Data(contentsOf: settingsFile),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+
+        return object
+    }
+
+    private static let timestamp: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter
+    }()
+
+    private var bridgeScript: String {
+        #"""
+#!/bin/sh
+
+input=$(cat)
+cache_dir="${HOME}/Library/Application Support/LimitLens"
+cache_file="${cache_dir}/claude-rate-limits.json"
+original_command_file="${HOME}/.claude/limit-lens-statusline-original-command"
+
+mkdir -p "$cache_dir"
+
+printf '%s' "$input" | /usr/bin/ruby -rjson -e '
+cache_file = ARGV.fetch(0)
+payload = JSON.parse(STDIN.read)
+cache = {
+  "source" => "claude-code-statusline",
+  "captured_at" => Time.now.to_i,
+  "model" => {
+    "id" => payload.dig("model", "id"),
+    "display_name" => payload.dig("model", "display_name")
+  },
+  "rate_limits" => payload["rate_limits"]
+}
+tmp = "#{cache_file}.#{$$}"
+File.write(tmp, JSON.generate(cache) + "\n")
+File.rename(tmp, cache_file)
+' "$cache_file" 2>/dev/null
+
+if [ -r "$original_command_file" ]; then
+  original_command=$(cat "$original_command_file")
+  case "$original_command" in
+    ""|*limit-lens-statusline-bridge.sh*)
+      ;;
+    *)
+      printf '%s' "$input" | /bin/sh -c "$original_command"
+      exit 0
+      ;;
+  esac
+fi
+
+printf '%s' "$input" | /usr/bin/ruby -rjson -e '
+payload = JSON.parse(STDIN.read)
+puts payload.dig("model", "display_name") || "Claude"
+' 2>/dev/null || printf 'Claude\n'
+"""#
     }
 }
 

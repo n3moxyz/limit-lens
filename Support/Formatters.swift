@@ -28,6 +28,14 @@ enum LimitFormatters {
         return formatter
     }()
 
+    static let exactResetTime: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.timeZone = .autoupdatingCurrent
+        formatter.dateFormat = "EEE, MMM d 'at' h:mm a zzz"
+        return formatter
+    }()
+
     static func percentString(_ value: Double?) -> String {
         guard let value else { return "Unknown" }
         return "\(Int(value.rounded()))%"
@@ -45,6 +53,28 @@ enum LimitFormatters {
         }
 
         return "Resets \(relative.localizedString(for: date, relativeTo: Date()))"
+    }
+
+    static func exactResetText(_ date: Date?, windowLabel: String, durationMinutes: Int?) -> String {
+        guard let date else { return "\(windowLabel) reset unknown" }
+        let resetDate = nextResetDate(from: date, durationMinutes: durationMinutes)
+        return "\(windowLabel) resets \(exactResetTime.string(from: resetDate))"
+    }
+
+    private static func nextResetDate(from date: Date, durationMinutes: Int?) -> Date {
+        guard let durationMinutes, durationMinutes > 0 else {
+            return date
+        }
+
+        var resetDate = date
+        let interval = TimeInterval(durationMinutes * 60)
+        let now = Date()
+
+        while resetDate.timeIntervalSince(now) <= 0 {
+            resetDate = resetDate.addingTimeInterval(interval)
+        }
+
+        return resetDate
     }
 
     static func updatedText(_ date: Date?) -> String {

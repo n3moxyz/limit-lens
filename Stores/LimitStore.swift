@@ -3,23 +3,23 @@ import Foundation
 
 @MainActor
 final class LimitStore: ObservableObject {
-    private static let demoModeDefaultsKey = "LimitLensDemoModeEnabled"
     private static let resetNotificationsDefaultsKey = "LimitLensResetNotificationsEnabled"
 
     @Published var codex = ProviderSnapshot.loading(.codex)
     @Published var claude = ProviderSnapshot.loading(.claude)
     @Published var selectedProvider: ProviderKind = .codex
     @Published var isRefreshing = false
-    @Published var isDemoMode: Bool {
-        didSet {
-            UserDefaults.standard.set(isDemoMode, forKey: Self.demoModeDefaultsKey)
-        }
-    }
+    @Published var isDemoMode: Bool
     @Published var resetNotificationsEnabled: Bool {
         didSet {
             UserDefaults.standard.set(resetNotificationsEnabled, forKey: Self.resetNotificationsDefaultsKey)
         }
     }
+    @Published var codexSetupStatus = CodexSetupStatus.checking
+    @Published var codexSetupMessage: String?
+    @Published var claudeSetupStatus = ClaudeSetupStatus.checking
+    @Published var isInstallingClaudeBridge = false
+    @Published var claudeSetupMessage: String?
     @Published var notificationStatusMessage: String?
     @Published var showsNotificationSettingsAction = false
 
@@ -36,7 +36,6 @@ final class LimitStore: ObservableObject {
             || ProcessInfo.processInfo.environment["LIMIT_LENS_DEMO_MODE"] == "1"
 
         isDemoMode = requestedDemoMode
-            || UserDefaults.standard.bool(forKey: Self.demoModeDefaultsKey)
         resetNotificationsEnabled = UserDefaults.standard.object(forKey: Self.resetNotificationsDefaultsKey) as? Bool ?? true
     }
 
@@ -150,6 +149,75 @@ final class LimitStore: ObservableObject {
         NSWorkspace.shared.open(url)
     }
 
+    func openCodexLoginInTerminal() {
+        openTerminalCommand(
+            filename: "limit-lens-codex-login.command",
+            command: "codex login",
+            completionMessage: "Return to Limit Lens and click Refresh Codex Setup."
+        )
+    }
+
+    func openClaudeLoginInTerminal() {
+        openTerminalCommand(
+            filename: "limit-lens-claude-login.command",
+            command: "claude auth login",
+            completionMessage: "Return to Limit Lens and click Refresh Claude Setup."
+        )
+    }
+
+    func refreshCodexSetupStatus() async {
+        codexSetupStatus = await codexService.fetchSetupStatus()
+    }
+
+    func refreshClaudeSetupStatus() async {
+        claudeSetupStatus = await claudeService.fetchSetupStatus()
+    }
+
+    func refreshSetupStatuses() async {
+        async let codexStatus = codexService.fetchSetupStatus()
+        async let claudeStatus = claudeService.fetchSetupStatus()
+
+        codexSetupStatus = await codexStatus
+        claudeSetupStatus = await claudeStatus
+    }
+
+    func installClaudeStatuslineBridge() async {
+        guard !isInstallingClaudeBridge else { return }
+
+        isInstallingClaudeBridge = true
+        claudeSetupMessage = "Installing Claude statusline bridge..."
+        defer { isInstallingClaudeBridge = false }
+
+        do {
+            try await claudeService.installStatuslineBridge()
+            claudeSetupMessage = "Bridge installed. Send one Claude Code message, then refresh."
+            await refreshClaudeSetupStatus()
+            await refreshNow()
+        } catch {
+            claudeSetupMessage = "Bridge install failed: \(error.localizedDescription)"
+            await refreshClaudeSetupStatus()
+        }
+    }
+
+    private func openTerminalCommand(filename: String, command: String, completionMessage: String) {
+        let scriptURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        let script = """
+        #!/bin/zsh
+        \(command)
+        echo
+        echo "\(completionMessage)"
+        """
+
+        do {
+            try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
+            NSWorkspace.shared.open(scriptURL)
+        } catch {
+            codexSetupMessage = "Could not open login: \(error.localizedDescription)"
+            claudeSetupMessage = "Could not open login: \(error.localizedDescription)"
+        }
+    }
+
     func refreshNow() async {
         guard !isRefreshing else { return }
 
@@ -168,6 +236,7 @@ final class LimitStore: ObservableObject {
 
         codex = await codexSnapshot
         claude = await claudeSnapshot
+        await refreshSetupStatuses()
         await syncResetNotifications()
     }
 

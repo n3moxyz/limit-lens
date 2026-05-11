@@ -68,6 +68,126 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            Section("Codex Setup") {
+                LabeledContent("CLI") {
+                    Text(store.codexSetupStatus.cliLabel)
+                        .foregroundStyle(store.codexSetupStatus.cliInstalled ? Color.secondary : Color.orange)
+                }
+
+                LabeledContent("ChatGPT account") {
+                    Text(store.codexSetupStatus.accountLabel)
+                        .foregroundStyle(store.codexSetupStatus.signedIn ? Color.secondary : Color.orange)
+                }
+
+                if let planType = store.codexSetupStatus.planType {
+                    LabeledContent("Plan") {
+                        Text(planType)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                LabeledContent("Rate limits") {
+                    Text(store.codexSetupStatus.limitsLabel)
+                        .foregroundStyle(store.codexSetupStatus.bucketCount > 0 ? Color.secondary : Color.orange)
+                }
+
+                Text(store.codexSetupStatus.nextStep)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let message = store.codexSetupMessage {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                HStack {
+                    Button {
+                        store.openCodexLoginInTerminal()
+                    } label: {
+                        Label("Open ChatGPT Login", systemImage: "terminal")
+                    }
+                    .accessibilityLabel("Open ChatGPT login")
+                    .accessibilityIdentifier("open-codex-login-button")
+
+                    Button {
+                        Task {
+                            await store.refreshCodexSetupStatus()
+                            await store.refreshNow()
+                        }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .disabled(store.isRefreshing)
+                    .help("Refresh Codex setup")
+                    .accessibilityLabel("Refresh Codex setup")
+                    .accessibilityIdentifier("refresh-codex-setup-button")
+                }
+            }
+
+            Section("Claude Setup") {
+                LabeledContent("Signed in") {
+                    Text(store.claudeSetupStatus.isSignedIn ? "Yes" : "No")
+                        .foregroundStyle(store.claudeSetupStatus.isSignedIn ? Color.secondary : Color.orange)
+                }
+
+                LabeledContent("Bridge") {
+                    Text(store.claudeSetupStatus.bridgeLabel)
+                        .foregroundStyle(store.claudeSetupStatus.bridgeInstalled ? Color.secondary : Color.orange)
+                }
+
+                LabeledContent("Live cache") {
+                    Text(store.claudeSetupStatus.cacheLabel)
+                        .foregroundStyle(store.claudeSetupStatus.cacheHasFreshLimits ? Color.secondary : Color.orange)
+                }
+
+                Text(store.claudeSetupStatus.nextStep)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let message = store.claudeSetupMessage {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                HStack {
+                    Button {
+                        store.openClaudeLoginInTerminal()
+                    } label: {
+                        Label("Open Claude Login", systemImage: "terminal")
+                    }
+                    .accessibilityLabel("Open Claude login")
+                    .accessibilityIdentifier("open-claude-login-button")
+
+                    Button {
+                        Task { await store.installClaudeStatuslineBridge() }
+                    } label: {
+                        Label("Install Bridge", systemImage: "link")
+                    }
+                    .disabled(store.isInstallingClaudeBridge)
+                    .accessibilityLabel("Install Claude statusline bridge")
+                    .accessibilityIdentifier("install-claude-bridge-button")
+
+                    Button {
+                        Task {
+                            await store.refreshClaudeSetupStatus()
+                            await store.refreshNow()
+                        }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .disabled(store.isRefreshing)
+                    .help("Refresh Claude setup")
+                    .accessibilityLabel("Refresh Claude setup")
+                    .accessibilityIdentifier("refresh-claude-setup-button")
+                }
+            }
+
             Section("Command Sources") {
                 LabeledContent("Codex") {
                     Text("codex app-server")
@@ -82,6 +202,9 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding(20)
-        .frame(width: 460)
+        .frame(maxWidth: 620, alignment: .leading)
+        .task {
+            await store.refreshSetupStatuses()
+        }
     }
 }

@@ -24,11 +24,6 @@ struct LimitLensApp: App {
             Label(store.menuBarTitle, systemImage: "speedometer")
         }
         .menuBarExtraStyle(.window)
-
-        Settings {
-            SettingsView()
-                .environmentObject(store)
-        }
     }
 }
 

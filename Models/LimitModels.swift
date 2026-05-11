@@ -117,6 +117,96 @@ enum NotificationDeliveryResult: Equatable {
     }
 }
 
+struct ClaudeSetupStatus: Equatable {
+    var isSignedIn: Bool
+    var accountLabel: String
+    var authDetail: String?
+    var bridgeInstalled: Bool
+    var cacheExists: Bool
+    var cacheCapturedAt: Date?
+    var cacheHasFreshLimits: Bool
+
+    static let checking = ClaudeSetupStatus(
+        isSignedIn: false,
+        accountLabel: "Checking...",
+        authDetail: nil,
+        bridgeInstalled: false,
+        cacheExists: false,
+        cacheCapturedAt: nil,
+        cacheHasFreshLimits: false
+    )
+
+    var bridgeLabel: String {
+        bridgeInstalled ? "Installed" : "Not installed"
+    }
+
+    var cacheLabel: String {
+        guard cacheExists else { return "No cache yet" }
+        guard let cacheCapturedAt else { return "Cache found" }
+        return "Captured \(LimitFormatters.relative.localizedString(for: cacheCapturedAt, relativeTo: Date()))"
+    }
+
+    var nextStep: String {
+        if !isSignedIn {
+            return "Sign in with Claude Code, then refresh."
+        }
+
+        if !bridgeInstalled {
+            return "Install the statusline bridge."
+        }
+
+        if !cacheHasFreshLimits {
+            return "Send one Claude Code message, then refresh."
+        }
+
+        return "Claude live limits are ready."
+    }
+}
+
+struct CodexSetupStatus: Equatable {
+    var cliInstalled: Bool
+    var signedIn: Bool
+    var planType: String?
+    var bucketCount: Int
+    var detail: String?
+
+    static let checking = CodexSetupStatus(
+        cliInstalled: false,
+        signedIn: false,
+        planType: nil,
+        bucketCount: 0,
+        detail: nil
+    )
+
+    var cliLabel: String {
+        cliInstalled ? "Installed" : "Not found"
+    }
+
+    var accountLabel: String {
+        signedIn ? "Connected" : "Not connected"
+    }
+
+    var limitsLabel: String {
+        bucketCount > 0 ? "\(bucketCount) buckets" : "No buckets"
+    }
+
+    var nextStep: String {
+        if !cliInstalled {
+            return "Install Codex CLI, then refresh."
+        }
+
+        if !signedIn {
+            return "Sign in with Codex, then refresh."
+        }
+
+        if bucketCount == 0 {
+            return detail ?? "Codex did not return usage buckets yet."
+        }
+
+        return "Codex live limits are ready."
+    }
+}
+
 struct ClaudeLocalUsage: Equatable {
     var promptsFiveHours: Int
     var assistantResponsesFiveHours: Int

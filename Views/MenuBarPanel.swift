@@ -1,6 +1,8 @@
+import AppKit
 import SwiftUI
 
 struct MenuBarPanel: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var store: LimitStore
 
@@ -41,34 +43,6 @@ struct MenuBarPanel: View {
             Divider()
 
             HStack(spacing: 10) {
-                HStack(spacing: 6) {
-                    Image(systemName: "sparkles")
-                        .foregroundStyle(.secondary)
-
-                    Text("Demo")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-
-                    Toggle(
-                        "",
-                        isOn: Binding(
-                            get: { store.isDemoMode },
-                            set: { store.setDemoMode($0) }
-                        )
-                    )
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                }
-                .help("Use deterministic sample data")
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("Demo mode")
-                .accessibilityValue(store.isDemoMode ? "On" : "Off")
-                .accessibilityHint("Switches between deterministic sample data and live command output")
-                .accessibilityIdentifier("menu-demo-mode-toggle")
-
                 Text(LimitFormatters.updatedText(store.codex.updatedAt ?? store.claude.updatedAt))
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -77,8 +51,7 @@ struct MenuBarPanel: View {
                 Spacer()
 
                 Button("Open Window") {
-                    NSApp.activate(ignoringOtherApps: true)
-                    openWindow(id: "main")
+                    openMainWindowFromPopup()
                 }
                 .font(.caption)
                 .help("Open Limit Lens window")
@@ -88,6 +61,45 @@ struct MenuBarPanel: View {
         }
         .padding(16)
         .accessibilityIdentifier("menu-bar-panel")
+    }
+
+    private func openMainWindowFromPopup() {
+        let popupWindow = NSApp.keyWindow
+        openWindow(id: "main")
+        dismiss()
+        focusMainWindowSoon(closing: popupWindow)
+    }
+
+    private func focusMainWindowSoon(closing popupWindow: NSWindow?) {
+        DispatchQueue.main.async {
+            closePopupIfNeeded(popupWindow)
+            focusMainWindow()
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            closePopupIfNeeded(popupWindow)
+            focusMainWindow()
+        }
+    }
+
+    private func closePopupIfNeeded(_ window: NSWindow?) {
+        guard let window, window.title != "Limit Lens" else {
+            return
+        }
+
+        window.orderOut(nil)
+    }
+
+    private func focusMainWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+
+        guard let window = NSApp.windows.first(where: { $0.title == "Limit Lens" }) else {
+            return
+        }
+
+        window.deminiaturize(nil)
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
     }
 }
 
@@ -104,17 +116,23 @@ private struct MiniProvider: View {
 
                 Text(primaryValue)
                     .font(.caption.monospacedDigit().weight(.medium))
-                    .foregroundStyle(primaryValue == "Unknown" ? .secondary : .primary)
+                    .foregroundStyle(primaryValue == "--" ? .secondary : .primary)
             }
 
             if let window = primaryWindow, let used = window.usedPercent {
                 ProgressView(value: max(0, min(used / 100, 1)))
                     .tint(color(for: used))
-                Text(LimitFormatters.resetText(window.resetsAt))
+                Text(
+                    LimitFormatters.exactResetText(
+                        window.resetsAt,
+                        windowLabel: weeklyLabel(for: window),
+                        durationMinutes: window.durationMinutes
+                    )
+                )
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             } else {
-                Text(snapshot.detail)
+                Text(weeklyFallbackText)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -129,13 +147,39 @@ private struct MiniProvider: View {
 
     private var primaryWindow: LimitWindow? {
         let windows = snapshot.buckets.flatMap(\.windows)
-        return windows.first { $0.label.contains("Weekly all-model") }
-            ?? windows.first { $0.label.contains("5-hour") }
-            ?? windows.first
+        return windows.first { window in
+            window.label.localizedCaseInsensitiveContains("Weekly")
+                || window.durationMinutes == 10_080
+        }
     }
 
     private var primaryValue: String {
-        LimitFormatters.percentString(primaryWindow?.usedPercent)
+        guard let used = primaryWindow?.usedPercent else {
+            return "--"
+        }
+
+        return LimitFormatters.percentString(used)
+    }
+
+    private var weeklyFallbackText: String {
+        switch snapshot.state {
+        case .ready:
+            if primaryWindow == nil {
+                return "Weekly window unavailable"
+            }
+
+            return "Weekly percentage unavailable"
+        default:
+            return snapshot.detail
+        }
+    }
+
+    private func weeklyLabel(for window: LimitWindow) -> String {
+        if window.label.localizedCaseInsensitiveContains("all-model") {
+            return "Weekly all-model"
+        }
+
+        return "Weekly"
     }
 
     private func color(for percent: Double) -> Color {
