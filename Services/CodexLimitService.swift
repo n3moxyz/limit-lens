@@ -192,11 +192,12 @@ struct CodexLimitService {
                     let response = try JSONDecoder().decode(CodexRateLimitResponse.self, from: responseData)
 
                     if let byId = response.rateLimitsByLimitId, !byId.isEmpty {
-                        buckets = byId.values.map(\.model).sorted { left, right in
+                        let returnedBuckets = byId.values.map(\.model).sorted { left, right in
                             if left.id == "codex" { return true }
                             if right.id == "codex" { return false }
                             return left.title < right.title
                         }
+                        buckets = userFacingBuckets(from: returnedBuckets)
                     } else if let single = response.rateLimits {
                         buckets = [single.model]
                     }
@@ -213,6 +214,14 @@ struct CodexLimitService {
             buckets: buckets,
             errorMessages: errorMessages
         )
+    }
+
+    private func userFacingBuckets(from buckets: [LimitBucket]) -> [LimitBucket] {
+        if let codexBucket = buckets.first(where: { $0.id == "codex" }) {
+            return [codexBucket]
+        }
+
+        return buckets
     }
 
     private func diagnosticMetrics(

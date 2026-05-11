@@ -32,9 +32,11 @@ struct ContentView: View {
             case .provider:
                 VStack(spacing: 0) {
                     MainActionStrip(
-                        isDemoMode: store.isDemoMode,
+                        isDemoMode: Binding(
+                            get: { store.isDemoMode },
+                            set: { store.setDemoMode($0) }
+                        ),
                         isRefreshing: store.isRefreshing,
-                        onToggleDemoMode: { store.setDemoMode(!store.isDemoMode) },
                         onRefresh: {
                             Task { await store.refreshNow() }
                         }
@@ -83,29 +85,24 @@ private enum MainPane: Hashable {
 }
 
 private struct MainActionStrip: View {
-    var isDemoMode: Bool
+    @Binding var isDemoMode: Bool
     var isRefreshing: Bool
-    var onToggleDemoMode: () -> Void
     var onRefresh: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
             Spacer()
 
-            Button {
-                onToggleDemoMode()
-            } label: {
-                Image(systemName: "sparkles")
-                    .frame(width: 32, height: 30)
+            Toggle(isOn: $isDemoMode) {
+                Label("Demo Mode", systemImage: "sparkles")
             }
-            .buttonStyle(.bordered)
+            .toggleStyle(.switch)
             .controlSize(.small)
-            .tint(isDemoMode ? .accentColor : .secondary)
-            .help(isDemoMode ? "Turn off demo mode" : "Turn on demo mode")
+            .help("Demo mode")
             .accessibilityLabel("Demo mode")
             .accessibilityValue(isDemoMode ? "On" : "Off")
             .accessibilityHint("Switches between deterministic sample data and live command output")
-            .accessibilityIdentifier("main-demo-mode-button")
+            .accessibilityIdentifier("main-demo-mode-toggle")
 
             Button {
                 onRefresh()

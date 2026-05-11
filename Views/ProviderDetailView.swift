@@ -201,14 +201,38 @@ private struct WindowUsageRow: View {
 
     private var footnoteLabel: String {
         guard window.usedPercent == nil else {
-            return LimitFormatters.resetText(window.resetsAt)
+            return exactResetText
         }
 
         guard window.resetsAt != nil else {
             return "Usage and reset time not reported"
         }
 
-        return "Usage not reported · \(LimitFormatters.resetText(window.resetsAt))"
+        return "Usage not reported · \(exactResetText)"
+    }
+
+    private var exactResetText: String {
+        LimitFormatters.exactResetText(
+            window.resetsAt,
+            windowLabel: resetWindowLabel,
+            durationMinutes: window.durationMinutes
+        )
+    }
+
+    private var resetWindowLabel: String {
+        if window.label.localizedCaseInsensitiveContains("Weekly all-model") {
+            return "Weekly all-model"
+        }
+
+        if window.label.localizedCaseInsensitiveContains("5-hour") {
+            return "5-hour"
+        }
+
+        if window.label.localizedCaseInsensitiveContains("Weekly") {
+            return "Weekly"
+        }
+
+        return window.label
     }
 }
 
