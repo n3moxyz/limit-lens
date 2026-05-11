@@ -26,7 +26,16 @@ final class LimitStore: ObservableObject {
             codexPart = "Cdx --"
         }
 
-        let claudePart = claude.state == .ready ? "Cl live" : "Cl --"
+        let claudeWindows = claude.buckets.flatMap(\.windows)
+        let claudeWindow = claudeWindows.first { $0.label.contains("Weekly all-model") }
+            ?? claudeWindows.first { $0.label.contains("5-hour") }
+        let claudePart: String
+        if let used = claudeWindow?.usedPercent {
+            claudePart = "Cl \(Int(used.rounded()))%"
+        } else {
+            claudePart = claude.state == .ready ? "Cl live" : "Cl --"
+        }
+
         return "\(codexPart)  \(claudePart)"
     }
 

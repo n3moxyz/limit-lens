@@ -26,7 +26,7 @@ struct SettingsView: View {
                 }
 
                 LabeledContent("Claude") {
-                    Text("claude auth status + local history")
+                    Text("claude auth status + statusline bridge + local history")
                         .foregroundStyle(.secondary)
                 }
             }

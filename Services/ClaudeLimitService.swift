@@ -3,11 +3,12 @@ import Foundation
 struct ClaudeLimitService {
     func fetchSnapshot() async -> ProviderSnapshot {
         let auth = await readAuthStatus()
+        let liveUsage = await readStatuslineUsage()
         let usage = await scanLocalUsage()
 
         let authMetrics = [
             UsageMetric(id: "account", title: "Account", value: auth.accountLabel, detail: auth.providerLabel),
-            UsageMetric(id: "liveQuota", title: "Live quota", value: "Not exposed", detail: "Use Claude Code /status or Settings > Usage"),
+            UsageMetric(id: "liveQuota", title: "Live quota", value: liveUsage.liveQuotaLabel, detail: liveUsage.liveQuotaDetail),
             UsageMetric(id: "prompts5h", title: "Prompts", value: "\(usage.promptsFiveHours)", detail: "Last 5 hours, local history"),
             UsageMetric(id: "tokens5h", title: "Tokens", value: LimitFormatters.number(usage.tokensFiveHours), detail: "Last 5 hours, local history"),
             UsageMetric(id: "tokens7d", title: "7-day tokens", value: LimitFormatters.number(usage.tokensSevenDays), detail: "Local Claude Code history only")
@@ -17,11 +18,11 @@ struct ClaudeLimitService {
             return ProviderSnapshot(
                 provider: .claude,
                 state: .ready,
-                headline: auth.accountLabel,
-                detail: "Claude does not expose live remaining subscription capacity through `claude auth status`. Exact remaining capacity is shown in interactive Claude Code `/status` and Claude Settings > Usage.",
+                headline: liveUsage.headline(fallback: auth.accountLabel),
+                detail: liveUsage.detail,
                 planType: auth.subscriptionDisplayName,
                 updatedAt: Date(),
-                buckets: planBuckets(for: auth, usage: usage),
+                buckets: planBuckets(for: auth, liveUsage: liveUsage, usage: usage),
                 metrics: authMetrics
             )
         }
@@ -63,17 +64,23 @@ struct ClaudeLimitService {
         }.value
     }
 
-    private func planBuckets(for auth: ClaudeAuthSummary, usage: ClaudeLocalUsage) -> [LimitBucket] {
+    private func readStatuslineUsage() async -> ClaudeStatuslineUsage {
+        await Task.detached(priority: .utility) {
+            ClaudeStatuslineCacheReader().read()
+        }.value
+    }
+
+    private func planBuckets(for auth: ClaudeAuthSummary, liveUsage: ClaudeStatuslineUsage, usage: ClaudeLocalUsage) -> [LimitBucket] {
         guard auth.loggedIn else {
             return localBuckets(from: usage)
         }
 
         var planWindows = [
             LimitWindow(
-                label: "5-hour included usage",
-                usedPercent: nil,
+                label: "Current session / 5-hour included usage",
+                usedPercent: liveUsage.fiveHour?.usedPercentage,
                 durationMinutes: 300,
-                resetsAt: nil
+                resetsAt: liveUsage.fiveHour?.resetsAt
             )
         ]
 
@@ -81,14 +88,14 @@ struct ClaudeLimitService {
             planWindows.append(
                 LimitWindow(
                     label: "Weekly all-model limit",
-                    usedPercent: nil,
+                    usedPercent: liveUsage.sevenDay?.usedPercentage,
                     durationMinutes: 10_080,
-                    resetsAt: nil
+                    resetsAt: liveUsage.sevenDay?.resetsAt
                 )
             )
             planWindows.append(
                 LimitWindow(
-                    label: "Weekly Sonnet limit",
+                    label: "Weekly Sonnet limit (not exposed)",
                     usedPercent: nil,
                     durationMinutes: 10_080,
                     resetsAt: nil
@@ -103,7 +110,7 @@ struct ClaudeLimitService {
                 planType: auth.subscriptionDisplayName,
                 reachedType: nil,
                 windows: planWindows,
-                creditSummary: "Remaining capacity is not available through the CLI"
+                creditSummary: liveUsage.planSummary
             ),
             localUsageBucket(from: usage)
         ]
@@ -146,6 +153,142 @@ private struct ClaudeAuthStatusDTO: Decodable {
     var authMethod: String?
     var apiProvider: String?
     var subscriptionType: String?
+}
+
+private struct ClaudeStatuslineUsage: Equatable {
+    var capturedAt: Date?
+    var modelDisplayName: String?
+    var fiveHour: ClaudeStatuslineWindow?
+    var sevenDay: ClaudeStatuslineWindow?
+
+    var hasLiveLimits: Bool {
+        fiveHour?.usedPercentage != nil || sevenDay?.usedPercentage != nil
+    }
+
+    var planSummary: String {
+        guard hasLiveLimits else {
+            return "Waiting for Claude Code statusline data"
+        }
+
+        return "From Claude Code statusline"
+    }
+
+    var liveQuotaLabel: String {
+        guard hasLiveLimits else {
+            return "Waiting"
+        }
+
+        if let sevenDay = sevenDay?.usedPercentage {
+            return "\(LimitFormatters.percentString(sevenDay)) weekly"
+        }
+
+        return "\(LimitFormatters.percentString(fiveHour?.usedPercentage)) 5-hour"
+    }
+
+    var liveQuotaDetail: String? {
+        guard let capturedAt else {
+            return "Install the statusline bridge, then send one Claude Code message"
+        }
+
+        let age = LimitFormatters.relative.localizedString(for: capturedAt, relativeTo: Date())
+        let model = modelDisplayName.map { " · \($0)" } ?? ""
+        return "Captured \(age)\(model)"
+    }
+
+    var detail: String {
+        guard hasLiveLimits else {
+            return "Claude Code exposes subscription usage through its documented statusline JSON after a Claude.ai response. Enable the Limit Lens statusline bridge, then send one Claude Code message to populate this view."
+        }
+
+        let age = capturedAt.map { LimitFormatters.relative.localizedString(for: $0, relativeTo: Date()) } ?? "recently"
+        return "Read from Claude Code statusline cache captured \(age). Claude exposes 5-hour and weekly all-model usage here; the separate Settings-only Sonnet weekly bar is not present in the documented statusline payload."
+    }
+
+    func headline(fallback: String) -> String {
+        if let sevenDay = sevenDay?.usedPercentage {
+            return "Weekly all-model \(LimitFormatters.percentString(sevenDay)) used"
+        }
+
+        if let fiveHour = fiveHour?.usedPercentage {
+            return "5-hour \(LimitFormatters.percentString(fiveHour)) used"
+        }
+
+        return fallback
+    }
+}
+
+private struct ClaudeStatuslineWindow: Equatable {
+    var usedPercentage: Double?
+    var resetsAt: Date?
+}
+
+private struct ClaudeStatuslineCacheReader {
+    func read() -> ClaudeStatuslineUsage {
+        let cacheURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/LimitLens/claude-rate-limits.json")
+
+        guard let data = try? Data(contentsOf: cacheURL),
+              let cache = try? JSONDecoder().decode(ClaudeStatuslineCacheDTO.self, from: data) else {
+            return ClaudeStatuslineUsage(capturedAt: nil, modelDisplayName: nil, fiveHour: nil, sevenDay: nil)
+        }
+
+        let capturedAt = cache.capturedAt.map { Date(timeIntervalSince1970: $0) }
+            ?? (try? FileManager.default.attributesOfItem(atPath: cacheURL.path)[.modificationDate] as? Date)
+
+        return ClaudeStatuslineUsage(
+            capturedAt: capturedAt,
+            modelDisplayName: cache.model?.displayName,
+            fiveHour: cache.rateLimits?.fiveHour?.model,
+            sevenDay: cache.rateLimits?.sevenDay?.model
+        )
+    }
+}
+
+private struct ClaudeStatuslineCacheDTO: Decodable {
+    var capturedAt: TimeInterval?
+    var model: ClaudeStatuslineModelDTO?
+    var rateLimits: ClaudeStatuslineRateLimitsDTO?
+
+    private enum CodingKeys: String, CodingKey {
+        case capturedAt = "captured_at"
+        case model
+        case rateLimits = "rate_limits"
+    }
+}
+
+private struct ClaudeStatuslineModelDTO: Decodable {
+    var displayName: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case displayName = "display_name"
+    }
+}
+
+private struct ClaudeStatuslineRateLimitsDTO: Decodable {
+    var fiveHour: ClaudeStatuslineWindowDTO?
+    var sevenDay: ClaudeStatuslineWindowDTO?
+
+    private enum CodingKeys: String, CodingKey {
+        case fiveHour = "five_hour"
+        case sevenDay = "seven_day"
+    }
+}
+
+private struct ClaudeStatuslineWindowDTO: Decodable {
+    var usedPercentage: Double?
+    var resetsAt: TimeInterval?
+
+    var model: ClaudeStatuslineWindow {
+        ClaudeStatuslineWindow(
+            usedPercentage: usedPercentage,
+            resetsAt: resetsAt.map { Date(timeIntervalSince1970: $0) }
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case usedPercentage = "used_percentage"
+        case resetsAt = "resets_at"
+    }
 }
 
 private struct ClaudeAuthSummary {

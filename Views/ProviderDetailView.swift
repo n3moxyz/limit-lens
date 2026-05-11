@@ -240,7 +240,7 @@ private struct SourceNote: View {
         case .codex:
             return "Codex is read from the local app-server account/rateLimits/read endpoint, so the percentages come from your signed-in Codex account."
         case .claude:
-            return "Claude subscription usage is shared across Claude surfaces. The Claude CLI exposes account and subscription metadata, but not live remaining capacity buckets; use interactive Claude Code /status or Claude Settings > Usage for exact remaining allocation."
+            return "Claude live usage is read from the documented Claude Code statusline rate_limits payload when the optional Limit Lens bridge is installed. Claude currently exposes 5-hour and 7-day all-model windows there; the separate Sonnet-only weekly Settings bar is not included."
         }
     }
 
