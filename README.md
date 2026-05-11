@@ -16,6 +16,12 @@ Run it from Codex or the shell with:
 ./script/build_and_run.sh
 ```
 
+Run checks with:
+
+```sh
+./script/test.sh
+```
+
 ## Claude Live Usage
 
 Claude Code only provides live subscription percentages to local tools through
@@ -62,6 +68,14 @@ The app shells out to the locally installed `codex` and `claude` CLIs:
 This is an unofficial desktop utility. It is not affiliated with, endorsed by,
 or sponsored by OpenAI, Anthropic, Codex, or Claude. Product names are used only
 to identify compatible local tools and services.
+
+## Design Notes
+
+- [Codex app-server source](docs/codex-app-server.md)
+- [Claude statusline source](docs/claude-statusline.md)
+- [Routing](docs/routing.md)
+- [UI](docs/ui.md)
+- [Distribution plan](docs/distribution.md)
 
 ## License
 

@@ -150,7 +150,7 @@ struct CodexLimitService {
         """
     }
 
-    private func parseProbeOutput(_ output: String) -> CodexProbeParseResult {
+    func parseProbeOutput(_ output: String) -> CodexProbeParseResult {
         var accountPlan: String?
         var accountReceived = false
         var limitsReceived = false
@@ -320,7 +320,7 @@ struct CodexLimitService {
     }
 }
 
-private struct CodexProbeParseResult {
+struct CodexProbeParseResult {
     var accountPlan: String?
     var accountReceived: Bool
     var limitsReceived: Bool

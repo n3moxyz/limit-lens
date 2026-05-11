@@ -4,7 +4,13 @@ import SwiftUI
 @main
 struct LimitLensApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var store = LimitStore()
+    @StateObject private var store: LimitStore
+
+    init() {
+        let store = LimitStore()
+        store.start()
+        _store = StateObject(wrappedValue: store)
+    }
 
     var body: some Scene {
         Window("Limit Lens", id: "main") {
@@ -20,8 +26,10 @@ struct LimitLensApp: App {
                 .environmentObject(store)
                 .frame(width: 340)
                 .task { store.start() }
+                .onAppear { store.setPollingActive(true) }
+                .onDisappear { store.setPollingActive(false) }
         } label: {
-            Label(store.menuBarTitle, systemImage: "speedometer")
+            MenuBarMeterLabel(codex: store.codex, claude: store.claude)
         }
         .menuBarExtraStyle(.window)
     }
@@ -29,7 +37,6 @@ struct LimitLensApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.setActivationPolicy(.accessory)
     }
 }

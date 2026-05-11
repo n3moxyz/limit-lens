@@ -19,9 +19,11 @@ let package = Package(
                 ".git",
                 "Assets",
                 "dist",
+                "docs",
                 "LICENSE",
                 "README.md",
-                "script"
+                "script",
+                "Tests"
             ],
             sources: [
                 "App",
@@ -31,6 +33,11 @@ let package = Package(
                 "Support",
                 "Views"
             ]
+        ),
+        .testTarget(
+            name: "LimitLensTests",
+            dependencies: ["LimitLens"],
+            path: "Tests/LimitLensTests"
         )
     ]
 )

@@ -22,6 +22,8 @@ enum LimitTheme {
             return .secondary
         case .ready:
             return .green
+        case .stale:
+            return .orange
         case .unavailable:
             return .orange
         case .failed:

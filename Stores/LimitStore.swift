@@ -28,7 +28,8 @@ final class LimitStore: ObservableObject {
     private let demoService = DemoLimitService()
     private let routeEvaluator = SuggestedRouteEvaluator()
     private let resetNotificationService = ResetNotificationService()
-    private var pollingTask: Task<Void, Never>?
+    let launchAtLogin = LaunchAtLogin()
+    private var usagePoller: UsagePoller?
     private var demoScenario: DemoLimitScenario = .scarce
 
     init() {
@@ -65,23 +66,26 @@ final class LimitStore: ObservableObject {
         if let used = claudeWindow?.usedPercent {
             claudePart = "Cl \(Int(used.rounded()))%"
         } else {
-            claudePart = claude.state == .ready ? "Cl live" : "Cl --"
+            claudePart = claude.state.isUsable ? "Cl live" : "Cl --"
         }
 
         return "\(codexPart)  \(claudePart)"
     }
 
     func start() {
-        guard pollingTask == nil else { return }
+        guard usagePoller == nil else { return }
 
-        pollingTask = Task { [weak self] in
-            await self?.refreshNow()
-
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(30))
-                await self?.refreshNow()
-            }
+        let poller = UsagePoller { [weak self] in
+            await self?.performRefresh() ?? false
         }
+        usagePoller = poller
+
+        Task { await poller.start() }
+    }
+
+    func setPollingActive(_ active: Bool) {
+        guard let usagePoller else { return }
+        Task { await usagePoller.setActive(active) }
     }
 
     func setDemoMode(_ enabled: Bool) {
@@ -228,7 +232,16 @@ final class LimitStore: ObservableObject {
     }
 
     func refreshNow() async {
-        guard !isRefreshing else { return }
+        guard let usagePoller else {
+            _ = await performRefresh()
+            return
+        }
+
+        await usagePoller.refreshNow()
+    }
+
+    private func performRefresh() async -> Bool {
+        guard !isRefreshing else { return true }
 
         let demoMode = isDemoMode
         isRefreshing = true
@@ -237,15 +250,20 @@ final class LimitStore: ObservableObject {
         if demoMode {
             applyDemoSnapshots(now: Date())
             await syncResetNotifications()
-            return
+            return true
         }
 
         async let codexSnapshot = codexService.fetchSnapshot()
         async let claudeSnapshot = claudeService.fetchSnapshot()
 
-        codex = await codexSnapshot
-        claude = await claudeSnapshot
+        let codexResult = mergedSnapshot(current: codex, candidate: await codexSnapshot)
+        let claudeResult = mergedSnapshot(current: claude, candidate: await claudeSnapshot)
+
+        codex = codexResult.snapshot
+        claude = claudeResult.snapshot
         await syncResetNotifications()
+
+        return codexResult.accepted || claudeResult.accepted
     }
 
     private func applyDemoSnapshots(now: Date) {
@@ -266,7 +284,7 @@ final class LimitStore: ObservableObject {
             return nil
         }
 
-        if case .ready = snapshot.state, !snapshot.buckets.isEmpty {
+        if snapshot.state.isUsable, !snapshot.buckets.isEmpty {
             return CodexSetupStatus(
                 cliInstalled: true,
                 signedIn: true,
@@ -277,5 +295,44 @@ final class LimitStore: ObservableObject {
         }
 
         return nil
+    }
+
+    private func mergedSnapshot(
+        current: ProviderSnapshot,
+        candidate: ProviderSnapshot
+    ) -> (snapshot: ProviderSnapshot, accepted: Bool) {
+        switch candidate.state {
+        case .ready:
+            return (candidate, true)
+        case .loading:
+            return (candidate, false)
+        case .stale:
+            return (candidate, candidate.hasUsableLimitData)
+        case .unavailable, .failed:
+            guard current.hasUsableLimitData else {
+                return (candidate, false)
+            }
+
+            var stale = current
+            let failure = candidate.state.message ?? candidate.headline
+            stale.state = .stale(failure)
+            stale.detail = "Showing last live data. Last refresh failed: \(failure)"
+            stale.metrics = staleMetrics(current: current, candidate: candidate)
+            return (stale, false)
+        }
+    }
+
+    private func staleMetrics(current: ProviderSnapshot, candidate: ProviderSnapshot) -> [UsageMetric] {
+        var metrics = current.metrics.filter { $0.id != "last-refresh-error" }
+        metrics.insert(
+            UsageMetric(
+                id: "last-refresh-error",
+                title: "Last refresh",
+                value: candidate.state.label,
+                detail: candidate.state.message ?? candidate.headline
+            ),
+            at: 0
+        )
+        return metrics
     }
 }

@@ -5,6 +5,10 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("Startup") {
+                LaunchAtLoginSettings(launchAtLogin: store.launchAtLogin)
+            }
+
             Section("Demo") {
                 Toggle(
                     isOn: Binding(
@@ -205,6 +209,31 @@ struct SettingsView: View {
         .frame(maxWidth: 620, alignment: .leading)
         .task {
             await store.refreshSetupStatuses()
+        }
+    }
+}
+
+private struct LaunchAtLoginSettings: View {
+    @ObservedObject var launchAtLogin: LaunchAtLogin
+
+    var body: some View {
+        Toggle(
+            isOn: Binding(
+                get: { launchAtLogin.isEnabled },
+                set: { launchAtLogin.setEnabled($0) }
+            )
+        ) {
+            Label("Launch at Login", systemImage: "power")
+        }
+        .accessibilityLabel("Launch at login")
+        .accessibilityHint("Starts Limit Lens automatically when you sign in to macOS")
+        .accessibilityIdentifier("launch-at-login-toggle")
+
+        if let error = launchAtLogin.lastError {
+            Text(error)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

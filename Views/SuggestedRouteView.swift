@@ -81,12 +81,6 @@ struct SuggestedRouteMini: View {
                 .lineLimit(2)
                 .help(route.recommendation)
 
-            Text(route.rationale)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .help(route.rationale)
-
             if showsDemoControls {
                 DemoControlsDisclosure(
                     notificationStatusMessage: notificationStatusMessage,
@@ -102,7 +96,7 @@ struct SuggestedRouteMini: View {
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Suggested route")
-        .accessibilityValue("\(route.title). \(route.recommendation). \(route.rationale)")
+        .accessibilityValue("\(route.title). \(route.recommendation)")
         .accessibilityIdentifier("menu-suggested-route")
     }
 }

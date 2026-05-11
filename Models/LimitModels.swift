@@ -17,6 +17,7 @@ enum ProviderKind: String, CaseIterable, Identifiable {
 enum SnapshotState: Equatable {
     case loading
     case ready
+    case stale(String)
     case unavailable(String)
     case failed(String)
 
@@ -24,8 +25,27 @@ enum SnapshotState: Equatable {
         switch self {
         case .loading: "Loading"
         case .ready: "Live"
+        case .stale: "Stale"
         case .unavailable: "Unavailable"
         case .failed: "Error"
+        }
+    }
+
+    var isUsable: Bool {
+        switch self {
+        case .ready, .stale:
+            return true
+        case .loading, .unavailable, .failed:
+            return false
+        }
+    }
+
+    var message: String? {
+        switch self {
+        case .loading, .ready:
+            return nil
+        case let .stale(message), let .unavailable(message), let .failed(message):
+            return message
         }
     }
 }
@@ -39,6 +59,10 @@ struct ProviderSnapshot: Equatable {
     var updatedAt: Date?
     var buckets: [LimitBucket]
     var metrics: [UsageMetric]
+
+    var hasUsableLimitData: Bool {
+        buckets.flatMap(\.windows).contains { $0.usedPercent != nil }
+    }
 
     static func loading(_ provider: ProviderKind) -> ProviderSnapshot {
         ProviderSnapshot(

@@ -82,6 +82,26 @@ enum LimitFormatters {
         return "Updated \(relative.localizedString(for: date, relativeTo: Date()))"
     }
 
+    static func coarseDuration(_ interval: TimeInterval) -> String {
+        let seconds = max(0, Int(interval.rounded()))
+        let minute = 60
+        let hour = 60 * minute
+        let day = 24 * hour
+
+        if seconds < hour {
+            let minutes = max(1, Int((Double(seconds) / Double(minute)).rounded()))
+            return "\(minutes) \(minutes == 1 ? "minute" : "minutes")"
+        }
+
+        if seconds < 2 * day {
+            let hours = max(1, Int((Double(seconds) / Double(hour)).rounded()))
+            return "\(hours) \(hours == 1 ? "hour" : "hours")"
+        }
+
+        let days = max(1, Int((Double(seconds) / Double(day)).rounded()))
+        return "\(days) \(days == 1 ? "day" : "days")"
+    }
+
     static func windowLabel(minutes: Int?) -> String {
         guard let minutes else { return "Window" }
 

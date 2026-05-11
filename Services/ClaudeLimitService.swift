@@ -202,7 +202,7 @@ private struct ClaudeAuthStatusDTO: Decodable {
     var subscriptionType: String?
 }
 
-private struct ClaudeStatuslineUsage: Equatable {
+struct ClaudeStatuslineUsage: Equatable {
     var capturedAt: Date?
     var modelDisplayName: String?
     var fiveHour: ClaudeStatuslineWindow?
@@ -264,7 +264,7 @@ private struct ClaudeStatuslineUsage: Equatable {
     }
 }
 
-private struct ClaudeStatuslineWindow: Equatable {
+struct ClaudeStatuslineWindow: Equatable {
     var usedPercentage: Double?
     var resetsAt: Date?
 }
@@ -277,11 +277,10 @@ private struct ClaudeStatuslineCacheReader {
 
         let now = Date()
 
-        return ClaudeStatuslineUsage(
+        return ClaudeStatuslineParser.usage(
+            from: cacheData.cache,
             capturedAt: cacheData.capturedAt,
-            modelDisplayName: cacheData.cache.model?.displayName,
-            fiveHour: freshWindow(cacheData.cache.rateLimits?.fiveHour?.model, now: now),
-            sevenDay: freshWindow(cacheData.cache.rateLimits?.sevenDay?.model, now: now)
+            now: now
         )
     }
 
@@ -290,14 +289,10 @@ private struct ClaudeStatuslineCacheReader {
             return ClaudeStatuslineCacheSummary(exists: false, capturedAt: nil, hasFreshLimits: false)
         }
 
-        let now = Date()
-        let fiveHour = freshWindow(cacheData.cache.rateLimits?.fiveHour?.model, now: now)
-        let sevenDay = freshWindow(cacheData.cache.rateLimits?.sevenDay?.model, now: now)
-
-        return ClaudeStatuslineCacheSummary(
-            exists: true,
+        return ClaudeStatuslineParser.summary(
+            from: cacheData.cache,
             capturedAt: cacheData.capturedAt,
-            hasFreshLimits: fiveHour?.usedPercentage != nil || sevenDay?.usedPercentage != nil
+            now: Date()
         )
     }
 
@@ -319,8 +314,51 @@ private struct ClaudeStatuslineCacheReader {
             url: cacheURL
         )
     }
+}
 
-    private func freshWindow(_ window: ClaudeStatuslineWindow?, now: Date) -> ClaudeStatuslineWindow? {
+enum ClaudeStatuslineParser {
+    static func usage(
+        from data: Data,
+        capturedAtFallback: Date? = nil,
+        now: Date = Date()
+    ) -> ClaudeStatuslineUsage? {
+        guard let cache = try? JSONDecoder().decode(ClaudeStatuslineCacheDTO.self, from: data) else {
+            return nil
+        }
+
+        let capturedAt = cache.capturedAt.map { Date(timeIntervalSince1970: $0) } ?? capturedAtFallback
+        return usage(from: cache, capturedAt: capturedAt, now: now)
+    }
+
+    fileprivate static func usage(
+        from cache: ClaudeStatuslineCacheDTO,
+        capturedAt: Date?,
+        now: Date
+    ) -> ClaudeStatuslineUsage {
+        ClaudeStatuslineUsage(
+            capturedAt: capturedAt,
+            modelDisplayName: cache.model?.displayName,
+            fiveHour: freshWindow(cache.rateLimits?.fiveHour?.model, now: now),
+            sevenDay: freshWindow(cache.rateLimits?.sevenDay?.model, now: now)
+        )
+    }
+
+    fileprivate static func summary(
+        from cache: ClaudeStatuslineCacheDTO,
+        capturedAt: Date?,
+        now: Date
+    ) -> ClaudeStatuslineCacheSummary {
+        let fiveHour = freshWindow(cache.rateLimits?.fiveHour?.model, now: now)
+        let sevenDay = freshWindow(cache.rateLimits?.sevenDay?.model, now: now)
+
+        return ClaudeStatuslineCacheSummary(
+            exists: true,
+            capturedAt: capturedAt,
+            hasFreshLimits: fiveHour?.usedPercentage != nil || sevenDay?.usedPercentage != nil
+        )
+    }
+
+    private static func freshWindow(_ window: ClaudeStatuslineWindow?, now: Date) -> ClaudeStatuslineWindow? {
         guard let window else { return nil }
 
         if let resetsAt = window.resetsAt, resetsAt <= now {
@@ -337,13 +375,13 @@ private struct ClaudeStatuslineCacheData {
     var url: URL
 }
 
-private struct ClaudeStatuslineCacheSummary {
+struct ClaudeStatuslineCacheSummary {
     var exists: Bool
     var capturedAt: Date?
     var hasFreshLimits: Bool
 }
 
-private struct ClaudeStatuslineCacheDTO: Decodable {
+fileprivate struct ClaudeStatuslineCacheDTO: Decodable {
     var capturedAt: TimeInterval?
     var model: ClaudeStatuslineModelDTO?
     var rateLimits: ClaudeStatuslineRateLimitsDTO?
@@ -355,7 +393,7 @@ private struct ClaudeStatuslineCacheDTO: Decodable {
     }
 }
 
-private struct ClaudeStatuslineModelDTO: Decodable {
+fileprivate struct ClaudeStatuslineModelDTO: Decodable {
     var displayName: String?
 
     private enum CodingKeys: String, CodingKey {
@@ -363,7 +401,7 @@ private struct ClaudeStatuslineModelDTO: Decodable {
     }
 }
 
-private struct ClaudeStatuslineRateLimitsDTO: Decodable {
+fileprivate struct ClaudeStatuslineRateLimitsDTO: Decodable {
     var fiveHour: ClaudeStatuslineWindowDTO?
     var sevenDay: ClaudeStatuslineWindowDTO?
 
@@ -373,7 +411,7 @@ private struct ClaudeStatuslineRateLimitsDTO: Decodable {
     }
 }
 
-private struct ClaudeStatuslineWindowDTO: Decodable {
+fileprivate struct ClaudeStatuslineWindowDTO: Decodable {
     var usedPercentage: Double?
     var resetsAt: TimeInterval?
 

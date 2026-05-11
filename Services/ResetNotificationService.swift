@@ -18,7 +18,7 @@ final class ResetNotificationService: NSObject, UNUserNotificationCenterDelegate
 
         guard await ensureAuthorization() else { return }
 
-        let events = resetEvents(from: [codex, claude])
+        let events = Self.resetEvents(from: [codex, claude])
         let pendingIDs = await pendingResetNotificationIDs()
         let eventIDs = Set(events.map(\.id))
         let staleIDs = pendingIDs.filter { !eventIDs.contains($0) }
@@ -75,9 +75,10 @@ final class ResetNotificationService: NSObject, UNUserNotificationCenterDelegate
         completionHandler([.banner, .list, .sound])
     }
 
-    private func resetEvents(from snapshots: [ProviderSnapshot]) -> [ResetNotificationEvent] {
-        let now = Date()
-
+    static func resetEvents(
+        from snapshots: [ProviderSnapshot],
+        now: Date = Date()
+    ) -> [ResetNotificationEvent] {
         return snapshots.flatMap { snapshot in
             snapshot.buckets.flatMap { bucket in
                 bucket.windows.compactMap { window in
@@ -187,7 +188,7 @@ final class ResetNotificationService: NSObject, UNUserNotificationCenterDelegate
     }
 }
 
-private struct ResetNotificationEvent {
+struct ResetNotificationEvent: Equatable {
     var id: String
     var title: String
     var body: String

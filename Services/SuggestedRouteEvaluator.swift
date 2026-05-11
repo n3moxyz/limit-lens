@@ -2,23 +2,31 @@ import Foundation
 
 struct SuggestedRouteEvaluator {
     func evaluate(codex: ProviderSnapshot, claude: ProviderSnapshot) -> SuggestedRoute {
-        let codexUsage = usagePercent(for: codex, preferredLabels: ["5-hour"])
-        let claudeUsage = usagePercent(for: claude, preferredLabels: ["Weekly all-model", "5-hour"])
-        let codexReset = resetDate(for: codex, preferredLabels: ["5-hour"])
-        let claudeReset = resetDate(for: claude, preferredLabels: ["Weekly all-model", "5-hour"])
+        let codexPressure = pressure(
+            for: codex,
+            preferredLabels: ["5-hour"],
+            usageThreshold: 80
+        )
+        let claudePressure = pressure(
+            for: claude,
+            preferredLabels: ["Weekly all-model", "5-hour"],
+            usageThreshold: 85
+        )
 
-        let codexAvailable = codex.state == .ready
-        let claudeAvailable = claude.state == .ready
-        let codexConstrained = codexUsage.map { $0 >= 80 } ?? !codexAvailable
-        let claudeConstrained = claudeUsage.map { $0 >= 85 } ?? !claudeAvailable
+        let codexAvailable = codexPressure.available
+        let claudeAvailable = claudePressure.available
+        let codexConstrained = codexPressure.isConstrained
+        let claudeConstrained = claudePressure.isConstrained
 
         if codexConstrained, claudeAvailable, !claudeConstrained {
             return SuggestedRoute(
                 title: "Use Claude next",
                 recommendation: "Save Codex for computer-use work.",
                 rationale: routeRationale(
-                    lead: "Codex is the scarcer bucket right now, while Claude still has room for planning, review, and text-heavy coding.",
-                    reset: codexReset
+                    lead: codexPressure.rationaleLead(
+                        fallback: "Codex is the scarcer bucket right now, while Claude still has room for planning, review, and text-heavy coding."
+                    ),
+                    reset: codexPressure.reset
                 ),
                 systemImage: "arrow.triangle.branch",
                 tintName: "orange"
@@ -30,8 +38,10 @@ struct SuggestedRouteEvaluator {
                 title: "Use Codex next",
                 recommendation: "Claude is constrained; Codex has room.",
                 rationale: routeRationale(
-                    lead: "Codex is available for the next task, especially if it needs desktop, browser, or file-system control.",
-                    reset: claudeReset
+                    lead: claudePressure.rationaleLead(
+                        fallback: "Codex is available for the next task, especially if it needs desktop, browser, or file-system control."
+                    ),
+                    reset: claudePressure.reset
                 ),
                 systemImage: "terminal",
                 tintName: "green"
@@ -44,7 +54,7 @@ struct SuggestedRouteEvaluator {
                 recommendation: "Both assistants look constrained.",
                 rationale: routeRationale(
                     lead: "Queue low-urgency work or switch to local edits until one usage window refreshes.",
-                    reset: earliestFutureDate([codexReset, claudeReset])
+                    reset: earliestFutureDate([codexPressure.reset, claudePressure.reset])
                 ),
                 systemImage: "clock.arrow.circlepath",
                 tintName: "red"
@@ -80,28 +90,38 @@ struct SuggestedRouteEvaluator {
         )
     }
 
-    private func usagePercent(for snapshot: ProviderSnapshot, preferredLabels: [String]) -> Double? {
-        let windows = snapshot.buckets.flatMap(\.windows)
+    private func pressure(
+        for snapshot: ProviderSnapshot,
+        preferredLabels: [String],
+        usageThreshold: Double
+    ) -> ProviderPressure {
+        let window = preferredWindow(for: snapshot, preferredLabels: preferredLabels)
+        let projection = window.flatMap { LimitProjector.project(window: $0) }
+        let usage = window?.usedPercent
+        let available = snapshot.state.isUsable && snapshot.hasUsableLimitData
+        let overPace = projection.map { $0.paceRatio > 1.10 } ?? false
+        let highUsage = usage.map { $0 >= usageThreshold } ?? false
 
-        for label in preferredLabels {
-            if let value = windows.first(where: { $0.label.localizedCaseInsensitiveContains(label) })?.usedPercent {
-                return value
-            }
-        }
-
-        return windows.first(where: { $0.usedPercent != nil })?.usedPercent
+        return ProviderPressure(
+            provider: snapshot.provider,
+            usage: usage,
+            reset: window?.resetsAt,
+            projection: projection,
+            available: available,
+            isConstrained: !available || highUsage || overPace
+        )
     }
 
-    private func resetDate(for snapshot: ProviderSnapshot, preferredLabels: [String]) -> Date? {
+    private func preferredWindow(for snapshot: ProviderSnapshot, preferredLabels: [String]) -> LimitWindow? {
         let windows = snapshot.buckets.flatMap(\.windows)
 
         for label in preferredLabels {
-            if let date = windows.first(where: { $0.label.localizedCaseInsensitiveContains(label) })?.resetsAt {
-                return date
+            if let window = windows.first(where: { $0.label.localizedCaseInsensitiveContains(label) }) {
+                return window
             }
         }
 
-        return windows.first(where: { $0.resetsAt != nil })?.resetsAt
+        return windows.first(where: { $0.usedPercent != nil || $0.resetsAt != nil })
     }
 
     private func routeRationale(lead: String, reset: Date?) -> String {
@@ -113,5 +133,26 @@ struct SuggestedRouteEvaluator {
         dates.compactMap { $0 }
             .filter { $0.timeIntervalSinceNow > 0 }
             .min()
+    }
+}
+
+private struct ProviderPressure {
+    var provider: ProviderKind
+    var usage: Double?
+    var reset: Date?
+    var projection: LimitProjection?
+    var available: Bool
+    var isConstrained: Bool
+
+    func rationaleLead(fallback: String) -> String {
+        if let projection, case let .overPace(deadTime) = projection.outcome, deadTime > 0 {
+            return "\(provider.rawValue) is on pace to hit its limit early, with about \(LimitFormatters.coarseDuration(deadTime)) of dead time before reset."
+        }
+
+        if let usage {
+            return "\(provider.rawValue) is at \(LimitFormatters.percentString(usage)) used, so it is the tighter bucket right now."
+        }
+
+        return fallback
     }
 }

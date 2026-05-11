@@ -56,6 +56,10 @@ cat > "$INFO_PLIST" <<PLIST
   <string>1</string>
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.developer-tools</string>
+  <key>LSUIElement</key>
+  <true/>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
   <key>NSUserNotificationAlertStyle</key>
