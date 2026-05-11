@@ -227,7 +227,7 @@ private struct SourceNote: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack {
-                Link("Open source docs", destination: docsURL)
+                Link(linkLabel, destination: docsURL)
                 Spacer()
             }
             .font(.caption)
@@ -240,7 +240,16 @@ private struct SourceNote: View {
         case .codex:
             return "Codex is read from the local app-server account/rateLimits/read endpoint, so the percentages come from your signed-in Codex account."
         case .claude:
-            return "Claude individual subscription usage is not exposed as a public quota API. This app shows Claude Code auth plus local history estimates; use Claude Code /status for exact remaining allocation."
+            return "Claude subscription usage is shared across Claude surfaces. The Claude CLI exposes account and subscription metadata, but not live remaining capacity buckets; use interactive Claude Code /status or Claude Settings > Usage for exact remaining allocation."
+        }
+    }
+
+    private var linkLabel: String {
+        switch provider {
+        case .codex:
+            return "Open source docs"
+        case .claude:
+            return "Open usage dashboard"
         }
     }
 
@@ -249,7 +258,7 @@ private struct SourceNote: View {
         case .codex:
             return URL(string: "https://developers.openai.com/codex/app-server#6-rate-limits-chatgpt")!
         case .claude:
-            return URL(string: "https://support.claude.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan")!
+            return URL(string: "https://claude.ai/settings/usage")!
         }
     }
 }

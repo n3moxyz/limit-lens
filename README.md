@@ -6,8 +6,9 @@ assistant limits from the desktop.
 - Codex: reads live ChatGPT/Codex buckets with `codex app-server` and
   `account/rateLimits/read`.
 - Claude: reads `claude auth status --json` and estimates recent Claude Code
-  activity from local `.claude` JSONL history. Anthropic does not expose the
-  same live individual subscription quota RPC; use Claude Code `/status` for the
+  activity from local `.claude` JSONL history. Claude Code exposes account and
+  subscription metadata, but not the same machine-readable live quota buckets as
+  Codex; use interactive Claude Code `/status` or Claude Settings > Usage for
   exact remaining allocation.
 
 Run it from Codex or the shell with:
@@ -29,6 +30,9 @@ The app shells out to the locally installed `codex` and `claude` CLIs:
 - Claude local usage estimates are derived from metadata in local `.claude`
   JSONL history files, such as timestamps, message type, model name, and usage
   token counters.
+- Claude exact remaining subscription usage is intentionally not guessed from
+  local files because Claude usage is shared across Claude web, desktop, and
+  Claude Code.
 
 ## Project Status
 
