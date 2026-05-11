@@ -3,12 +3,14 @@ import SwiftUI
 struct SuggestedRouteCard: View {
     var route: SuggestedRoute
     var showsDemoControls = false
-    var demoNotificationStatus: String?
+    var notificationStatusMessage: String?
+    var showsNotificationSettingsAction = false
     var onSimulateLimitPressure: () -> Void = {}
     var onSimulateResetAvailable: () -> Void = {}
+    var onOpenNotificationSettings: () -> Void = {}
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: route.systemImage)
                     .font(.system(size: 22, weight: .semibold))
@@ -28,13 +30,6 @@ struct SuggestedRouteCard: View {
                 }
 
                 Spacer()
-
-                if showsDemoControls {
-                    DemoEventControls(
-                        onSimulateLimitPressure: onSimulateLimitPressure,
-                        onSimulateResetAvailable: onSimulateResetAvailable
-                    )
-                }
             }
 
             Text(route.rationale)
@@ -42,8 +37,14 @@ struct SuggestedRouteCard: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if showsDemoControls, let demoNotificationStatus {
-                DemoNotificationStatus(message: demoNotificationStatus)
+            if showsDemoControls {
+                DemoControlsDisclosure(
+                    notificationStatusMessage: notificationStatusMessage,
+                    showsNotificationSettingsAction: showsNotificationSettingsAction,
+                    onSimulateLimitPressure: onSimulateLimitPressure,
+                    onSimulateResetAvailable: onSimulateResetAvailable,
+                    onOpenNotificationSettings: onOpenNotificationSettings
+                )
             }
         }
         .padding(14)
@@ -62,9 +63,11 @@ struct SuggestedRouteCard: View {
 struct SuggestedRouteMini: View {
     var route: SuggestedRoute
     var showsDemoControls = false
-    var demoNotificationStatus: String?
+    var notificationStatusMessage: String?
+    var showsNotificationSettingsAction = false
     var onSimulateLimitPressure: () -> Void = {}
     var onSimulateResetAvailable: () -> Void = {}
+    var onOpenNotificationSettings: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -79,17 +82,16 @@ struct SuggestedRouteMini: View {
             Text(route.rationale)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-                .lineLimit(3)
+                .lineLimit(2)
 
             if showsDemoControls {
-                DemoEventControls(
+                DemoControlsDisclosure(
+                    notificationStatusMessage: notificationStatusMessage,
+                    showsNotificationSettingsAction: showsNotificationSettingsAction,
                     onSimulateLimitPressure: onSimulateLimitPressure,
-                    onSimulateResetAvailable: onSimulateResetAvailable
+                    onSimulateResetAvailable: onSimulateResetAvailable,
+                    onOpenNotificationSettings: onOpenNotificationSettings
                 )
-
-                if let demoNotificationStatus {
-                    DemoNotificationStatus(message: demoNotificationStatus)
-                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -102,17 +104,69 @@ struct SuggestedRouteMini: View {
     }
 }
 
-private struct DemoNotificationStatus: View {
-    var message: String
+private struct DemoControlsDisclosure: View {
+    @State private var isExpanded = false
+
+    var notificationStatusMessage: String?
+    var showsNotificationSettingsAction: Bool
+    var onSimulateLimitPressure: () -> Void
+    var onSimulateResetAvailable: () -> Void
+    var onOpenNotificationSettings: () -> Void
 
     var body: some View {
-        Label(message, systemImage: "bell.badge")
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
-            .accessibilityLabel("Demo notification status")
-            .accessibilityValue(message)
-            .accessibilityIdentifier("demo-notification-status")
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: 8) {
+                DemoEventControls(
+                    onSimulateLimitPressure: onSimulateLimitPressure,
+                    onSimulateResetAvailable: onSimulateResetAvailable
+                )
+
+                if let notificationStatusMessage {
+                    DemoNotificationStatus(
+                        message: notificationStatusMessage,
+                        showsNotificationSettingsAction: showsNotificationSettingsAction,
+                        onOpenNotificationSettings: onOpenNotificationSettings
+                    )
+                }
+            }
+            .padding(.top, 6)
+        } label: {
+            Label("Demo controls", systemImage: "slider.horizontal.3")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityIdentifier("demo-controls-disclosure")
+    }
+}
+
+private struct DemoNotificationStatus: View {
+    var message: String
+    var showsNotificationSettingsAction: Bool
+    var onOpenNotificationSettings: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(message, systemImage: "bell.badge")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+
+            if showsNotificationSettingsAction {
+                Button {
+                    onOpenNotificationSettings()
+                } label: {
+                    Label("Open Notification Settings", systemImage: "gear")
+                }
+                .font(.caption)
+                .buttonStyle(.link)
+                .accessibilityLabel("Open notification settings")
+                .accessibilityIdentifier("route-open-notification-settings-button")
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Demo notification status")
+        .accessibilityValue(message)
+        .accessibilityIdentifier("demo-notification-status")
     }
 }
 

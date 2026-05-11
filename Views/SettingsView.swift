@@ -54,6 +54,14 @@ struct SettingsView: View {
                 .accessibilityHint("Schedules a notification when a usage window resets")
                 .accessibilityIdentifier("reset-alerts-toggle")
 
+                Button {
+                    store.openNotificationSettings()
+                } label: {
+                    Label("Open Notification Settings", systemImage: "gear")
+                }
+                .accessibilityLabel("Open notification settings")
+                .accessibilityIdentifier("open-notification-settings-button")
+
                 Text("Limit Lens can notify you when a reported Codex or Claude window becomes available again.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

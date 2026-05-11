@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 @MainActor
@@ -19,7 +20,8 @@ final class LimitStore: ObservableObject {
             UserDefaults.standard.set(resetNotificationsEnabled, forKey: Self.resetNotificationsDefaultsKey)
         }
     }
-    @Published var demoNotificationStatus: String?
+    @Published var notificationStatusMessage: String?
+    @Published var showsNotificationSettingsAction = false
 
     private let codexService = CodexLimitService()
     private let claudeService = ClaudeLimitService()
@@ -113,11 +115,13 @@ final class LimitStore: ObservableObject {
 
         demoScenario = .limited
         applyDemoSnapshots(now: Date())
-        demoNotificationStatus = "Queuing demo notification..."
+        notificationStatusMessage = "Queuing demo notification..."
+        showsNotificationSettingsAction = false
 
         Task {
             let result = await resetNotificationService.deliverDemoLimitPressure()
-            demoNotificationStatus = result.demoStatusMessage
+            notificationStatusMessage = result.statusMessage
+            showsNotificationSettingsAction = result.needsSettingsAction
             await syncResetNotifications()
         }
     }
@@ -127,13 +131,23 @@ final class LimitStore: ObservableObject {
 
         demoScenario = .available
         applyDemoSnapshots(now: Date())
-        demoNotificationStatus = "Queuing demo notification..."
+        notificationStatusMessage = "Queuing demo notification..."
+        showsNotificationSettingsAction = false
 
         Task {
             let result = await resetNotificationService.deliverDemoResetAvailable()
-            demoNotificationStatus = result.demoStatusMessage
+            notificationStatusMessage = result.statusMessage
+            showsNotificationSettingsAction = result.needsSettingsAction
             await syncResetNotifications()
         }
+    }
+
+    func openNotificationSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") else {
+            return
+        }
+
+        NSWorkspace.shared.open(url)
     }
 
     func refreshNow() async {

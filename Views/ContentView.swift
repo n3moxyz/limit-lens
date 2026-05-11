@@ -47,9 +47,11 @@ struct ContentView: View {
                 snapshot: store.selectedSnapshot,
                 route: store.suggestedRoute,
                 showsDemoControls: store.isDemoMode,
-                demoNotificationStatus: store.demoNotificationStatus,
+                notificationStatusMessage: store.notificationStatusMessage,
+                showsNotificationSettingsAction: store.showsNotificationSettingsAction,
                 onSimulateLimitPressure: store.simulateDemoLimitPressure,
-                onSimulateResetAvailable: store.simulateDemoResetAvailable
+                onSimulateResetAvailable: store.simulateDemoResetAvailable,
+                onOpenNotificationSettings: store.openNotificationSettings
             )
         }
     }

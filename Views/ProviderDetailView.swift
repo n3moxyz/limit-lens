@@ -1,12 +1,16 @@
 import SwiftUI
 
 struct ProviderDetailView: View {
+    @State private var isDiagnosticsExpanded = false
+
     var snapshot: ProviderSnapshot
     var route: SuggestedRoute
     var showsDemoControls = false
-    var demoNotificationStatus: String?
+    var notificationStatusMessage: String?
+    var showsNotificationSettingsAction = false
     var onSimulateLimitPressure: () -> Void = {}
     var onSimulateResetAvailable: () -> Void = {}
+    var onOpenNotificationSettings: () -> Void = {}
 
     var body: some View {
         ScrollView {
@@ -14,16 +18,18 @@ struct ProviderDetailView: View {
                 SuggestedRouteCard(
                     route: route,
                     showsDemoControls: showsDemoControls,
-                    demoNotificationStatus: demoNotificationStatus,
+                    notificationStatusMessage: notificationStatusMessage,
+                    showsNotificationSettingsAction: showsNotificationSettingsAction,
                     onSimulateLimitPressure: onSimulateLimitPressure,
-                    onSimulateResetAvailable: onSimulateResetAvailable
+                    onSimulateResetAvailable: onSimulateResetAvailable,
+                    onOpenNotificationSettings: onOpenNotificationSettings
                 )
 
                 HeaderView(snapshot: snapshot)
 
                 if !snapshot.buckets.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Buckets")
+                        Text("Current Limits")
                             .font(.headline)
 
                         ForEach(snapshot.buckets) { bucket in
@@ -33,16 +39,18 @@ struct ProviderDetailView: View {
                 }
 
                 if !snapshot.metrics.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text(snapshot.provider == .codex ? "Codex Diagnostics" : "Signals")
-                            .font(.headline)
-
+                    DisclosureGroup(isExpanded: $isDiagnosticsExpanded) {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
                             ForEach(snapshot.metrics) { metric in
                                 MetricTile(metric: metric)
                             }
                         }
+                        .padding(.top, 8)
+                    } label: {
+                        Text(snapshot.provider == .codex ? "Diagnostics" : "Signals")
+                            .font(.headline)
                     }
+                    .accessibilityIdentifier("diagnostics-disclosure")
                 }
 
                 SourceNote(provider: snapshot.provider)

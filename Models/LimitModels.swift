@@ -97,7 +97,7 @@ enum NotificationDeliveryResult: Equatable {
     case denied
     case failed(String)
 
-    var demoStatusMessage: String {
+    var statusMessage: String {
         switch self {
         case .scheduled:
             return "Demo notification queued"
@@ -106,6 +106,14 @@ enum NotificationDeliveryResult: Equatable {
         case let .failed(message):
             return "Notification failed: \(message)"
         }
+    }
+
+    var needsSettingsAction: Bool {
+        if case .denied = self {
+            return true
+        }
+
+        return false
     }
 }
 
