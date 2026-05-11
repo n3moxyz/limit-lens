@@ -15,12 +15,29 @@ struct MenuBarPanel: View {
                 Button {
                     Task { await store.refreshNow() }
                 } label: {
-                    Image(systemName: "arrow.clockwise")
+                    Label("Refresh Limits", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(.borderless)
                 .disabled(store.isRefreshing)
                 .help("Refresh now")
+                .accessibilityLabel("Refresh limits")
+                .accessibilityHint("Checks Codex and Claude usage limits now")
+                .accessibilityIdentifier("menu-refresh-limits-button")
             }
+
+            Toggle(
+                isOn: Binding(
+                    get: { store.isDemoMode },
+                    set: { store.setDemoMode($0) }
+                )
+            ) {
+                Label("Demo Mode", systemImage: "sparkles")
+            }
+            .help("Use deterministic sample data")
+            .accessibilityLabel("Demo mode")
+            .accessibilityValue(store.isDemoMode ? "On" : "Off")
+            .accessibilityHint("Switches between deterministic sample data and live command output")
+            .accessibilityIdentifier("menu-demo-mode-toggle")
 
             MiniProvider(snapshot: store.codex)
             Divider()
@@ -38,9 +55,13 @@ struct MenuBarPanel: View {
                     openWindow(id: "main")
                 }
                 .font(.caption)
+                .help("Open Limit Lens window")
+                .accessibilityLabel("Open Limit Lens window")
+                .accessibilityIdentifier("open-main-window-button")
             }
         }
         .padding(16)
+        .accessibilityIdentifier("menu-bar-panel")
     }
 }
 
@@ -74,5 +95,9 @@ private struct MiniProvider: View {
                 ProgressView(value: max(0, min(used / 100, 1)))
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(snapshot.provider.rawValue) menu summary")
+        .accessibilityValue("\(snapshot.state.label). \(snapshot.headline). \(snapshot.detail)")
+        .accessibilityIdentifier("menu-summary-\(snapshot.provider.rawValue.lowercased())")
     }
 }

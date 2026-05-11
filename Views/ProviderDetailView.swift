@@ -21,7 +21,7 @@ struct ProviderDetailView: View {
 
                 if !snapshot.metrics.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Signals")
+                        Text(snapshot.provider == .codex ? "Codex Diagnostics" : "Signals")
                             .font(.headline)
 
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
@@ -36,6 +36,7 @@ struct ProviderDetailView: View {
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("\(snapshot.provider.rawValue.lowercased())-detail-view")
         }
     }
 }
@@ -73,6 +74,9 @@ private struct HeaderView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.bottom, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(snapshot.provider.rawValue) status")
+        .accessibilityValue("\(snapshot.headline). \(snapshot.detail)")
     }
 }
 
@@ -108,6 +112,9 @@ private struct BucketCard: View {
         }
         .padding(14)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(bucket.title)
+        .accessibilityIdentifier("bucket-card-\(bucket.id)")
     }
 
     private var subtitle: String? {
@@ -139,15 +146,22 @@ private struct WindowUsageRow: View {
             if let usedPercent = window.usedPercent {
                 ProgressView(value: max(0, min(usedPercent / 100, 1)))
                     .tint(color(for: usedPercent))
+                    .accessibilityLabel("\(window.label) usage")
+                    .accessibilityValue(LimitFormatters.percentString(window.usedPercent))
             } else {
                 ProgressView(value: 0)
                     .tint(.secondary)
+                    .accessibilityLabel("\(window.label) usage")
+                    .accessibilityValue("Unknown")
             }
 
             Text(LimitFormatters.resetText(window.resetsAt))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(window.label)
+        .accessibilityValue("\(LimitFormatters.percentString(window.usedPercent)). \(LimitFormatters.resetText(window.resetsAt))")
     }
 
     private func color(for percent: Double) -> Color {
@@ -187,6 +201,10 @@ private struct MetricTile: View {
         .frame(maxWidth: .infinity, minHeight: 78, alignment: .topLeading)
         .padding(12)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(metric.title)
+        .accessibilityValue([metric.value, metric.detail].compactMap { $0 }.joined(separator: ". "))
+        .accessibilityIdentifier("metric-\(metric.id)")
     }
 }
 
@@ -200,6 +218,8 @@ private struct StatePill: View {
             .padding(.vertical, 5)
             .background(color.opacity(0.16), in: Capsule())
             .foregroundStyle(color)
+            .accessibilityLabel("State")
+            .accessibilityValue(state.label)
     }
 
     private var color: Color {

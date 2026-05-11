@@ -2,14 +2,30 @@ import Foundation
 
 @MainActor
 final class LimitStore: ObservableObject {
+    private static let demoModeDefaultsKey = "LimitLensDemoModeEnabled"
+
     @Published var codex = ProviderSnapshot.loading(.codex)
     @Published var claude = ProviderSnapshot.loading(.claude)
     @Published var selectedProvider: ProviderKind = .codex
     @Published var isRefreshing = false
+    @Published var isDemoMode: Bool {
+        didSet {
+            UserDefaults.standard.set(isDemoMode, forKey: Self.demoModeDefaultsKey)
+        }
+    }
 
     private let codexService = CodexLimitService()
     private let claudeService = ClaudeLimitService()
+    private let demoService = DemoLimitService()
     private var pollingTask: Task<Void, Never>?
+
+    init() {
+        let requestedDemoMode = ProcessInfo.processInfo.arguments.contains("--demo")
+            || ProcessInfo.processInfo.environment["LIMIT_LENS_DEMO_MODE"] == "1"
+
+        isDemoMode = requestedDemoMode
+            || UserDefaults.standard.bool(forKey: Self.demoModeDefaultsKey)
+    }
 
     var selectedSnapshot: ProviderSnapshot {
         switch selectedProvider {
@@ -52,15 +68,34 @@ final class LimitStore: ObservableObject {
         }
     }
 
+    func setDemoMode(_ enabled: Bool) {
+        guard isDemoMode != enabled else { return }
+
+        isDemoMode = enabled
+
+        Task {
+            await refreshNow()
+        }
+    }
+
     func refreshNow() async {
         guard !isRefreshing else { return }
 
+        let demoMode = isDemoMode
         isRefreshing = true
+        defer { isRefreshing = false }
+
+        if demoMode {
+            let now = Date()
+            codex = demoService.codexSnapshot(now: now)
+            claude = demoService.claudeSnapshot(now: now)
+            return
+        }
+
         async let codexSnapshot = codexService.fetchSnapshot()
         async let claudeSnapshot = claudeService.fetchSnapshot()
 
         codex = await codexSnapshot
         claude = await claudeSnapshot
-        isRefreshing = false
     }
 }

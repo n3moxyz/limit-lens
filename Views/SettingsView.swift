@@ -5,6 +5,25 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("Demo") {
+                Toggle(
+                    isOn: Binding(
+                        get: { store.isDemoMode },
+                        set: { store.setDemoMode($0) }
+                    )
+                ) {
+                    Label("Demo Mode", systemImage: "sparkles")
+                }
+                .accessibilityLabel("Demo mode")
+                .accessibilityHint("Uses deterministic sample data instead of live command output")
+                .accessibilityIdentifier("demo-mode-toggle")
+
+                Text("Use deterministic sample data for Codex and Claude during live demos.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Section("Refresh") {
                 HStack {
                     Text("Interval")
@@ -17,6 +36,9 @@ struct SettingsView: View {
                     Task { await store.refreshNow() }
                 }
                 .disabled(store.isRefreshing)
+                .accessibilityLabel("Refresh limits now")
+                .accessibilityHint("Checks Codex and Claude usage limits now")
+                .accessibilityIdentifier("settings-refresh-limits-button")
             }
 
             Section("Command Sources") {

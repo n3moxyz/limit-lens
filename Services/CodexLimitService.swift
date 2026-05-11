@@ -4,18 +4,50 @@ struct CodexLimitService {
     func fetchSnapshot() async -> ProviderSnapshot {
         do {
             let result = try await ShellRunner.run(codexProbeCommand, timeout: 12)
-            let parsed = try parseProbeOutput(result.stdout)
+            let parsed = parseProbeOutput(result.stdout)
 
-            guard !parsed.buckets.isEmpty else {
+            if isMissingCodex(result) {
                 return ProviderSnapshot(
                     provider: .codex,
-                    state: .unavailable("No rate-limit buckets returned"),
-                    headline: "No Codex limits",
-                    detail: "Codex is installed, but app-server did not return a usable rate-limit bucket.",
+                    state: .failed("Codex CLI not found"),
+                    headline: "Codex CLI not found",
+                    detail: "Install Codex or make sure `codex` is on PATH, then refresh.",
+                    planType: nil,
+                    updatedAt: Date(),
+                    buckets: [],
+                    metrics: diagnosticMetrics(
+                        result: result,
+                        parsed: parsed,
+                        outcome: "Failed",
+                        detail: "`codex` command was not found",
+                        nextStep: "Install Codex or fix PATH"
+                    )
+                )
+            }
+
+            guard !parsed.buckets.isEmpty else {
+                let message = parsed.errorMessages.first ?? trimmed(result.stderr)
+                let commandDetail = message ?? "No usable bucket data was returned."
+                let headline = result.status == 0 ? "No Codex buckets" : "Codex probe failed"
+                let detail = result.status == 0
+                    ? "Codex app-server responded, but account/rateLimits/read did not return a usable rate-limit bucket."
+                    : "Codex app-server exited with status \(result.status). Run `codex login`, then refresh."
+
+                return ProviderSnapshot(
+                    provider: .codex,
+                    state: result.status == 0 ? .unavailable("No rate-limit buckets returned") : .failed(commandDetail),
+                    headline: headline,
+                    detail: detail,
                     planType: parsed.accountPlan,
                     updatedAt: Date(),
                     buckets: [],
-                    metrics: []
+                    metrics: diagnosticMetrics(
+                        result: result,
+                        parsed: parsed,
+                        outcome: result.status == 0 ? "No buckets" : "Failed",
+                        detail: commandDetail,
+                        nextStep: result.status == 0 ? "Refresh or inspect app-server output" : "Run `codex login`"
+                    )
                 )
             }
 
@@ -31,14 +63,13 @@ struct CodexLimitService {
                 planType: plan,
                 updatedAt: Date(),
                 buckets: parsed.buckets,
-                metrics: [
-                    UsageMetric(
-                        id: "source",
-                        title: "Source",
-                        value: "Codex app-server",
-                        detail: "account/rateLimits/read"
-                    )
-                ]
+                metrics: diagnosticMetrics(
+                    result: result,
+                    parsed: parsed,
+                    outcome: "Succeeded",
+                    detail: "Live app-server response",
+                    nextStep: nil
+                )
             )
         } catch {
             return ProviderSnapshot(
@@ -49,7 +80,26 @@ struct CodexLimitService {
                 planType: nil,
                 updatedAt: Date(),
                 buckets: [],
-                metrics: []
+                metrics: [
+                    UsageMetric(
+                        id: "probe",
+                        title: "Last probe",
+                        value: "Failed",
+                        detail: error.localizedDescription
+                    ),
+                    UsageMetric(
+                        id: "command",
+                        title: "Command",
+                        value: "app-server",
+                        detail: "codex app-server"
+                    ),
+                    UsageMetric(
+                        id: "next-step",
+                        title: "Next step",
+                        value: "Check Codex",
+                        detail: "Install/sign in, then refresh"
+                    )
+                ]
             )
         }
     }
@@ -61,45 +111,147 @@ struct CodexLimitService {
         let limits = #"{"method":"account/rateLimits/read","id":2}"#
 
         return """
-        { printf '%s\\n' '\(initialize)'; sleep 0.15; printf '%s\\n' '\(initialized)'; sleep 0.15; printf '%s\\n' '\(account)'; sleep 0.15; printf '%s\\n' '\(limits)'; sleep 1; } | codex app-server 2>/dev/null
+        { printf '%s\\n' '\(initialize)'; sleep 0.15; printf '%s\\n' '\(initialized)'; sleep 0.15; printf '%s\\n' '\(account)'; sleep 0.15; printf '%s\\n' '\(limits)'; sleep 1; } | codex app-server
         """
     }
 
-    private func parseProbeOutput(_ output: String) throws -> (accountPlan: String?, buckets: [LimitBucket]) {
+    private func parseProbeOutput(_ output: String) -> CodexProbeParseResult {
         var accountPlan: String?
+        var accountReceived = false
+        var limitsReceived = false
         var buckets: [LimitBucket] = []
+        var errorMessages: [String] = []
 
         for line in output.split(separator: "\n") {
             guard let data = String(line).data(using: .utf8),
                   let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let id = object["id"] as? Int,
-                  let result = object["result"] as? [String: Any] else {
+                  let id = object["id"] as? Int else {
+                continue
+            }
+
+            if let error = object["error"] as? [String: Any] {
+                if let message = error["message"] as? String {
+                    errorMessages.append(message)
+                } else {
+                    errorMessages.append("Codex app-server returned an error for request \(id).")
+                }
+
+                continue
+            }
+
+            guard let result = object["result"] as? [String: Any] else {
                 continue
             }
 
             if id == 1 {
+                accountReceived = true
                 let account = result["account"] as? [String: Any]
                 accountPlan = account?["planType"] as? String
             }
 
             if id == 2 {
-                let responseData = try JSONSerialization.data(withJSONObject: result)
-                let response = try JSONDecoder().decode(CodexRateLimitResponse.self, from: responseData)
+                limitsReceived = true
 
-                if let byId = response.rateLimitsByLimitId, !byId.isEmpty {
-                    buckets = byId.values.map(\.model).sorted { left, right in
-                        if left.id == "codex" { return true }
-                        if right.id == "codex" { return false }
-                        return left.title < right.title
+                do {
+                    let responseData = try JSONSerialization.data(withJSONObject: result)
+                    let response = try JSONDecoder().decode(CodexRateLimitResponse.self, from: responseData)
+
+                    if let byId = response.rateLimitsByLimitId, !byId.isEmpty {
+                        buckets = byId.values.map(\.model).sorted { left, right in
+                            if left.id == "codex" { return true }
+                            if right.id == "codex" { return false }
+                            return left.title < right.title
+                        }
+                    } else if let single = response.rateLimits {
+                        buckets = [single.model]
                     }
-                } else if let single = response.rateLimits {
-                    buckets = [single.model]
+                } catch {
+                    errorMessages.append("Could not decode rate-limit response: \(error.localizedDescription)")
                 }
             }
         }
 
-        return (accountPlan, buckets)
+        return CodexProbeParseResult(
+            accountPlan: accountPlan,
+            accountReceived: accountReceived,
+            limitsReceived: limitsReceived,
+            buckets: buckets,
+            errorMessages: errorMessages
+        )
     }
+
+    private func diagnosticMetrics(
+        result: ShellResult,
+        parsed: CodexProbeParseResult,
+        outcome: String,
+        detail: String?,
+        nextStep: String?
+    ) -> [UsageMetric] {
+        var metrics = [
+            UsageMetric(
+                id: "probe",
+                title: "Last probe",
+                value: outcome,
+                detail: detail ?? "codex app-server exit \(result.status)"
+            ),
+            UsageMetric(
+                id: "signed-in",
+                title: "Signed in",
+                value: parsed.accountReceived ? "Yes" : "Unknown",
+                detail: parsed.accountPlan ?? (parsed.accountReceived ? "account/read responded" : "No account/read response")
+            ),
+            UsageMetric(
+                id: "bucket-count",
+                title: "Buckets",
+                value: "\(parsed.buckets.count)",
+                detail: parsed.limitsReceived ? "Parsed from account/rateLimits/read" : "No rate-limit response"
+            ),
+            UsageMetric(
+                id: "command",
+                title: "Command",
+                value: "app-server",
+                detail: "codex app-server"
+            ),
+            UsageMetric(
+                id: "endpoint",
+                title: "Endpoint",
+                value: "rateLimits",
+                detail: "account/rateLimits/read"
+            )
+        ]
+
+        if let nextStep {
+            metrics.append(
+                UsageMetric(
+                    id: "next-step",
+                    title: "Next step",
+                    value: nextStep,
+                    detail: "Then use Refresh limits"
+                )
+            )
+        }
+
+        return metrics
+    }
+
+    private func isMissingCodex(_ result: ShellResult) -> Bool {
+        result.status == 127
+            || result.stderr.localizedCaseInsensitiveContains("command not found: codex")
+            || result.stderr.localizedCaseInsensitiveContains("codex: command not found")
+    }
+
+    private func trimmed(_ value: String) -> String? {
+        let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedValue.isEmpty ? nil : trimmedValue
+    }
+}
+
+private struct CodexProbeParseResult {
+    var accountPlan: String?
+    var accountReceived: Bool
+    var limitsReceived: Bool
+    var buckets: [LimitBucket]
+    var errorMessages: [String]
 }
 
 private struct CodexRateLimitResponse: Decodable {

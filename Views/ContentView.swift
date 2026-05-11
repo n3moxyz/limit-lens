@@ -14,14 +14,32 @@ struct ContentView: View {
             .listStyle(.sidebar)
             .navigationTitle("Limits")
             .toolbar {
-                ToolbarItem {
+                ToolbarItemGroup {
+                    Toggle(
+                        isOn: Binding(
+                            get: { store.isDemoMode },
+                            set: { store.setDemoMode($0) }
+                        )
+                    ) {
+                        Label("Demo Mode", systemImage: "sparkles")
+                    }
+                    .toggleStyle(.button)
+                    .help("Use deterministic sample data")
+                    .accessibilityLabel("Demo mode")
+                    .accessibilityValue(store.isDemoMode ? "On" : "Off")
+                    .accessibilityHint("Switches between deterministic sample data and live command output")
+                    .accessibilityIdentifier("toolbar-demo-mode-toggle")
+
                     Button {
                         Task { await store.refreshNow() }
                     } label: {
-                        Image(systemName: "arrow.clockwise")
+                        Label("Refresh Limits", systemImage: "arrow.clockwise")
                     }
                     .disabled(store.isRefreshing)
                     .help("Refresh limits")
+                    .accessibilityLabel("Refresh limits")
+                    .accessibilityHint("Checks Codex and Claude usage limits now")
+                    .accessibilityIdentifier("refresh-limits-button")
                 }
             }
         } detail: {
@@ -57,6 +75,10 @@ private struct ProviderRow: View {
             }
         }
         .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(snapshot.provider.rawValue) provider")
+        .accessibilityValue(rowSubtitle)
+        .accessibilityIdentifier("provider-row-\(snapshot.provider.rawValue.lowercased())")
     }
 
     private var rowSubtitle: String {
