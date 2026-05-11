@@ -7,7 +7,7 @@ struct LimitLensApp: App {
     @StateObject private var store = LimitStore()
 
     var body: some Scene {
-        WindowGroup("Limit Lens", id: "main") {
+        Window("Limit Lens", id: "main") {
             ContentView()
                 .environmentObject(store)
                 .task { store.start() }
