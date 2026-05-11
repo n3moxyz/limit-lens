@@ -92,6 +92,23 @@ enum DemoLimitScenario {
     case available
 }
 
+enum NotificationDeliveryResult: Equatable {
+    case scheduled
+    case denied
+    case failed(String)
+
+    var demoStatusMessage: String {
+        switch self {
+        case .scheduled:
+            return "Demo notification queued"
+        case .denied:
+            return "Notifications are blocked in macOS Settings"
+        case let .failed(message):
+            return "Notification failed: \(message)"
+        }
+    }
+}
+
 struct ClaudeLocalUsage: Equatable {
     var promptsFiveHours: Int
     var assistantResponsesFiveHours: Int

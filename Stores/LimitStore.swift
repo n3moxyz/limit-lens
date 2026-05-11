@@ -19,6 +19,7 @@ final class LimitStore: ObservableObject {
             UserDefaults.standard.set(resetNotificationsEnabled, forKey: Self.resetNotificationsDefaultsKey)
         }
     }
+    @Published var demoNotificationStatus: String?
 
     private let codexService = CodexLimitService()
     private let claudeService = ClaudeLimitService()
@@ -112,9 +113,11 @@ final class LimitStore: ObservableObject {
 
         demoScenario = .limited
         applyDemoSnapshots(now: Date())
+        demoNotificationStatus = "Queuing demo notification..."
 
         Task {
-            await resetNotificationService.deliverDemoLimitPressure()
+            let result = await resetNotificationService.deliverDemoLimitPressure()
+            demoNotificationStatus = result.demoStatusMessage
             await syncResetNotifications()
         }
     }
@@ -124,9 +127,11 @@ final class LimitStore: ObservableObject {
 
         demoScenario = .available
         applyDemoSnapshots(now: Date())
+        demoNotificationStatus = "Queuing demo notification..."
 
         Task {
-            await resetNotificationService.deliverDemoResetAvailable()
+            let result = await resetNotificationService.deliverDemoResetAvailable()
+            demoNotificationStatus = result.demoStatusMessage
             await syncResetNotifications()
         }
     }

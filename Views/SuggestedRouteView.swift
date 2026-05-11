@@ -3,6 +3,7 @@ import SwiftUI
 struct SuggestedRouteCard: View {
     var route: SuggestedRoute
     var showsDemoControls = false
+    var demoNotificationStatus: String?
     var onSimulateLimitPressure: () -> Void = {}
     var onSimulateResetAvailable: () -> Void = {}
 
@@ -40,6 +41,10 @@ struct SuggestedRouteCard: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if showsDemoControls, let demoNotificationStatus {
+                DemoNotificationStatus(message: demoNotificationStatus)
+            }
         }
         .padding(14)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -57,6 +62,7 @@ struct SuggestedRouteCard: View {
 struct SuggestedRouteMini: View {
     var route: SuggestedRoute
     var showsDemoControls = false
+    var demoNotificationStatus: String?
     var onSimulateLimitPressure: () -> Void = {}
     var onSimulateResetAvailable: () -> Void = {}
 
@@ -80,6 +86,10 @@ struct SuggestedRouteMini: View {
                     onSimulateLimitPressure: onSimulateLimitPressure,
                     onSimulateResetAvailable: onSimulateResetAvailable
                 )
+
+                if let demoNotificationStatus {
+                    DemoNotificationStatus(message: demoNotificationStatus)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -89,6 +99,20 @@ struct SuggestedRouteMini: View {
         .accessibilityLabel("Suggested route")
         .accessibilityValue("\(route.title). \(route.recommendation). \(route.rationale)")
         .accessibilityIdentifier("menu-suggested-route")
+    }
+}
+
+private struct DemoNotificationStatus: View {
+    var message: String
+
+    var body: some View {
+        Label(message, systemImage: "bell.badge")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+            .accessibilityLabel("Demo notification status")
+            .accessibilityValue(message)
+            .accessibilityIdentifier("demo-notification-status")
     }
 }
 

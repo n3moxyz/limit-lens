@@ -47,6 +47,7 @@ struct ContentView: View {
                 snapshot: store.selectedSnapshot,
                 route: store.suggestedRoute,
                 showsDemoControls: store.isDemoMode,
+                demoNotificationStatus: store.demoNotificationStatus,
                 onSimulateLimitPressure: store.simulateDemoLimitPressure,
                 onSimulateResetAvailable: store.simulateDemoResetAvailable
             )

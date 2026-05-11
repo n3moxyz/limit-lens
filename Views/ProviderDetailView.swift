@@ -4,6 +4,7 @@ struct ProviderDetailView: View {
     var snapshot: ProviderSnapshot
     var route: SuggestedRoute
     var showsDemoControls = false
+    var demoNotificationStatus: String?
     var onSimulateLimitPressure: () -> Void = {}
     var onSimulateResetAvailable: () -> Void = {}
 
@@ -13,6 +14,7 @@ struct ProviderDetailView: View {
                 SuggestedRouteCard(
                     route: route,
                     showsDemoControls: showsDemoControls,
+                    demoNotificationStatus: demoNotificationStatus,
                     onSimulateLimitPressure: onSimulateLimitPressure,
                     onSimulateResetAvailable: onSimulateResetAvailable
                 )

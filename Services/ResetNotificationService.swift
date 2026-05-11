@@ -51,16 +51,16 @@ final class ResetNotificationService: NSObject, UNUserNotificationCenterDelegate
         }
     }
 
-    func deliverDemoLimitPressure() async {
-        await deliverNow(
+    func deliverDemoLimitPressure() async -> NotificationDeliveryResult {
+        await deliverDemoEvent(
             id: "limit-lens-demo-limit-\(UUID().uuidString)",
             title: "Codex is almost limited",
             body: "Demo: Codex is at 97%. Route planning and review to Claude, and save Codex for computer-use work."
         )
     }
 
-    func deliverDemoResetAvailable() async {
-        await deliverNow(
+    func deliverDemoResetAvailable() async -> NotificationDeliveryResult {
+        await deliverDemoEvent(
             id: "limit-lens-demo-reset-\(UUID().uuidString)",
             title: "Codex is available again",
             body: "Demo: the Codex 5-hour window reset. It is a good moment to spend Codex on desktop or browser control."
@@ -104,16 +104,25 @@ final class ResetNotificationService: NSObject, UNUserNotificationCenterDelegate
         }
     }
 
-    private func deliverNow(id: String, title: String, body: String) async {
-        guard await ensureAuthorization() else { return }
+    private func deliverDemoEvent(id: String, title: String, body: String) async -> NotificationDeliveryResult {
+        guard await ensureAuthorization() else {
+            return .denied
+        }
 
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
         content.sound = .default
 
-        let request = UNNotificationRequest(identifier: id, content: content, trigger: nil)
-        try? await add(request)
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false)
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+
+        do {
+            try await add(request)
+            return .scheduled
+        } catch {
+            return .failed(error.localizedDescription)
+        }
     }
 
     private func ensureAuthorization() async -> Bool {
