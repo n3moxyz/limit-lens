@@ -2,10 +2,13 @@ import SwiftUI
 
 struct ProviderDetailView: View {
     var snapshot: ProviderSnapshot
+    var route: SuggestedRoute
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                SuggestedRouteCard(route: route)
+
                 HeaderView(snapshot: snapshot)
 
                 if !snapshot.buckets.isEmpty {

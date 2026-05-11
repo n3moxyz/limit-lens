@@ -17,6 +17,7 @@ final class LimitStore: ObservableObject {
     private let codexService = CodexLimitService()
     private let claudeService = ClaudeLimitService()
     private let demoService = DemoLimitService()
+    private let routeEvaluator = SuggestedRouteEvaluator()
     private var pollingTask: Task<Void, Never>?
 
     init() {
@@ -32,6 +33,10 @@ final class LimitStore: ObservableObject {
         case .codex: codex
         case .claude: claude
         }
+    }
+
+    var suggestedRoute: SuggestedRoute {
+        routeEvaluator.evaluate(codex: codex, claude: claude)
     }
 
     var menuBarTitle: String {

@@ -43,7 +43,7 @@ struct ContentView: View {
                 }
             }
         } detail: {
-            ProviderDetailView(snapshot: store.selectedSnapshot)
+            ProviderDetailView(snapshot: store.selectedSnapshot, route: store.suggestedRoute)
         }
     }
 

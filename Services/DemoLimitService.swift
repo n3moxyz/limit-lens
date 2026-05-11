@@ -14,7 +14,7 @@ struct DemoLimitService {
                 windows: [
                     LimitWindow(
                         label: "5-hour",
-                        usedPercent: 42,
+                        usedPercent: 82,
                         durationMinutes: 300,
                         resetsAt: fiveHourReset
                     ),
@@ -32,8 +32,8 @@ struct DemoLimitService {
         return ProviderSnapshot(
             provider: .codex,
             state: .ready,
-            headline: "42% used",
-            detail: "Demo data from a sample Codex app-server rate-limit response.",
+            headline: "82% used",
+            detail: "Demo data: Codex is getting scarce, so save it for computer-use tasks.",
             planType: "ChatGPT Pro",
             updatedAt: now,
             buckets: buckets,

@@ -78,6 +78,14 @@ struct UsageMetric: Identifiable, Equatable {
     var detail: String?
 }
 
+struct SuggestedRoute: Equatable {
+    var title: String
+    var recommendation: String
+    var rationale: String
+    var systemImage: String
+    var tintName: String
+}
+
 struct ClaudeLocalUsage: Equatable {
     var promptsFiveHours: Int
     var assistantResponsesFiveHours: Int
