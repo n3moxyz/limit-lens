@@ -10,7 +10,8 @@ struct MenuBarMeterLabel: View {
     var body: some View {
         Image(nsImage: renderedImage)
             .accessibilityLabel("Limit Lens")
-            .accessibilityValue("\(accessibilitySummary(for: codex)); \(accessibilitySummary(for: claude))")
+            .accessibilityValue("\(MenuBarMeterPresentation.accessibilitySummary(for: codex)); \(MenuBarMeterPresentation.accessibilitySummary(for: claude))")
+            .accessibilityHint("Shows consumed Codex and Claude limit percentages")
     }
 
     private var renderedImage: NSImage {
@@ -44,9 +45,6 @@ struct MenuBarMeterLabel: View {
         colorScheme == .dark ? .white : .black
     }
 
-    private func accessibilitySummary(for snapshot: ProviderSnapshot) -> String {
-        "\(snapshot.provider.rawValue) \(snapshot.state.label), \(snapshot.headline)"
-    }
 }
 
 private struct ProviderMenuMeter: View {
@@ -86,14 +84,6 @@ private struct ProviderMenuMeter: View {
         .frame(height: 15)
     }
 
-    private var fillFraction: Double {
-        guard let usedPercent else {
-            return 0
-        }
-
-        return max(0, min(1, usedPercent / 100))
-    }
-
     private var fillWidth: Double {
         guard let usedPercent else {
             return 0
@@ -111,16 +101,7 @@ private struct ProviderMenuMeter: View {
     }
 
     private var usedPercent: Double? {
-        let windows = snapshot.buckets.flatMap(\.windows)
-        let preferredWindow = windows.first { window in
-            window.label.localizedCaseInsensitiveContains("Weekly")
-                || window.durationMinutes == 10_080
-        } ?? windows.first { window in
-            window.label.localizedCaseInsensitiveContains("5-hour")
-                || window.durationMinutes == 300
-        }
-
-        return preferredWindow?.usedPercent ?? windows.first(where: { $0.usedPercent != nil })?.usedPercent
+        MenuBarMeterPresentation.usedPercent(for: snapshot)
     }
 
     private var fillColor: Color {
@@ -128,14 +109,7 @@ private struct ProviderMenuMeter: View {
             return textColor.opacity(0.26)
         }
 
-        switch usedPercent {
-        case 85...:
-            return .red
-        case 65..<85:
-            return .orange
-        default:
-            return Color(red: 0.08, green: 0.48, blue: 1.0)
-        }
+        return LimitTheme.usageColor(for: usedPercent)
     }
 }
 
@@ -149,5 +123,50 @@ enum MenuBarMeterSizing {
         }
 
         return usedPercent < 5 ? max(1, rawWidth) : rawWidth
+    }
+}
+
+enum MenuBarMeterPresentation {
+    static func usedPercent(for snapshot: ProviderSnapshot) -> Double? {
+        let windows = snapshot.buckets.flatMap(\.windows)
+        let preferredWindow = preferredWindow(in: windows)
+
+        return preferredWindow?.usedPercent ?? windows.first(where: { $0.usedPercent != nil })?.usedPercent
+    }
+
+    static func accessibilitySummary(for snapshot: ProviderSnapshot) -> String {
+        let windows = snapshot.buckets.flatMap(\.windows)
+        guard let window = preferredWindow(in: windows) ?? windows.first(where: { $0.usedPercent != nil }) else {
+            return "\(snapshot.provider.rawValue) \(snapshot.state.label), \(snapshot.headline)"
+        }
+
+        let usage = window.usedPercent.map { "\(LimitFormatters.percentString($0)) used" } ?? "usage not reported"
+        return "\(snapshot.provider.rawValue) \(snapshot.state.label), \(accessibilityLabel(for: window)) \(usage)"
+    }
+
+    private static func preferredWindow(in windows: [LimitWindow]) -> LimitWindow? {
+        windows.first { window in
+            window.label.localizedCaseInsensitiveContains("Weekly")
+                || window.durationMinutes == 10_080
+        } ?? windows.first { window in
+            window.label.localizedCaseInsensitiveContains("5-hour")
+                || window.durationMinutes == 300
+        }
+    }
+
+    private static func accessibilityLabel(for window: LimitWindow) -> String {
+        if window.label.localizedCaseInsensitiveContains("all-model") {
+            return "weekly all-model"
+        }
+
+        if window.label.localizedCaseInsensitiveContains("Weekly") || window.durationMinutes == 10_080 {
+            return "weekly"
+        }
+
+        if window.label.localizedCaseInsensitiveContains("5-hour") || window.durationMinutes == 300 {
+            return "5-hour"
+        }
+
+        return window.label
     }
 }

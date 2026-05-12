@@ -1,14 +1,18 @@
 import SwiftUI
 
 enum LimitTheme {
+    static let usageNominalColor = Color(red: 0.66, green: 0.48, blue: 1.0)
+    static let usageWarningColor = Color.orange
+    static let usageCriticalColor = Color.red
+
     static func usageColor(for percent: Double) -> Color {
         switch percent {
         case 85...:
-            return .red
+            return usageCriticalColor
         case 65..<85:
-            return .orange
+            return usageWarningColor
         default:
-            return .green
+            return usageNominalColor
         }
     }
 

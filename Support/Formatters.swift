@@ -77,9 +77,13 @@ enum LimitFormatters {
         return resetDate
     }
 
-    static func updatedText(_ date: Date?) -> String {
+    static func updatedText(_ date: Date?, relativeTo referenceDate: Date = Date()) -> String {
         guard let date else { return "Never refreshed" }
-        return "Updated \(relative.localizedString(for: date, relativeTo: Date()))"
+        if referenceDate.timeIntervalSince(date) < 5 {
+            return "Updated just now"
+        }
+
+        return "Updated \(relative.localizedString(for: date, relativeTo: referenceDate))"
     }
 
     static func coarseDuration(_ interval: TimeInterval) -> String {

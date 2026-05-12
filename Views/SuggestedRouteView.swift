@@ -74,11 +74,14 @@ struct SuggestedRouteMini: View {
             Label(route.title, systemImage: route.systemImage)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(LimitTheme.suggestedRouteColor(named: route.tintName))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
                 .help(route.title)
 
             Text(route.recommendation)
                 .font(.caption.weight(.medium))
                 .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
                 .help(route.recommendation)
 
             if showsDemoControls {

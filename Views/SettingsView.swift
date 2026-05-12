@@ -32,7 +32,7 @@ struct SettingsView: View {
                 HStack {
                     Text("Interval")
                     Spacer()
-                    Text("30 seconds")
+                    Text(LimitFormatters.coarseDuration(UsagePoller.defaultNormalInterval))
                         .foregroundStyle(.secondary)
                 }
 

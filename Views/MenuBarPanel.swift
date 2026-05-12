@@ -43,10 +43,11 @@ struct MenuBarPanel: View {
             Divider()
 
             HStack(spacing: 10) {
-                Text(LimitFormatters.updatedText(store.codex.updatedAt ?? store.claude.updatedAt))
+                Text(updatedText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .help(updatedText)
 
                 Spacer()
 
@@ -68,6 +69,10 @@ struct MenuBarPanel: View {
         openWindow(id: "main")
         dismiss()
         focusMainWindowSoon(closing: popupWindow)
+    }
+
+    private var updatedText: String {
+        LimitFormatters.updatedText(store.codex.updatedAt ?? store.claude.updatedAt)
     }
 
     private func focusMainWindowSoon(closing popupWindow: NSWindow?) {
@@ -122,6 +127,8 @@ private struct MiniProvider: View {
             if let window = primaryWindow, let used = window.usedPercent {
                 ProgressView(value: max(0, min(used / 100, 1)))
                     .tint(LimitTheme.usageColor(for: used))
+                    .accessibilityLabel("\(snapshot.provider.rawValue) weekly usage")
+                    .accessibilityValue(LimitFormatters.percentString(used))
                 Text(
                     LimitFormatters.exactResetText(
                         window.resetsAt,
@@ -135,14 +142,15 @@ private struct MiniProvider: View {
                 Text(weeklyFallbackText)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                     .help(weeklyFallbackText)
             }
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(snapshot.provider.rawValue) menu summary")
-        .accessibilityValue("\(snapshot.state.label). \(snapshot.headline). \(snapshot.detail)")
+        .accessibilityValue(accessibilitySummary)
         .accessibilityIdentifier("menu-summary-\(snapshot.provider.rawValue.lowercased())")
     }
 
@@ -173,6 +181,21 @@ private struct MiniProvider: View {
         default:
             return snapshot.detail
         }
+    }
+
+    private var accessibilitySummary: String {
+        guard let window = primaryWindow else {
+            return "\(snapshot.state.label). \(weeklyFallbackText)"
+        }
+
+        let usage = window.usedPercent.map { "\(LimitFormatters.percentString($0)) used" } ?? "usage not reported"
+        let reset = LimitFormatters.exactResetText(
+            window.resetsAt,
+            windowLabel: weeklyLabel(for: window),
+            durationMinutes: window.durationMinutes
+        )
+
+        return "\(snapshot.state.label). \(weeklyLabel(for: window)) \(usage). \(reset)"
     }
 
     private func weeklyLabel(for window: LimitWindow) -> String {

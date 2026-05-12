@@ -1,6 +1,10 @@
 import Foundation
 
 actor UsagePoller {
+    static let defaultNormalInterval: TimeInterval = 60
+    static let defaultActiveInterval: TimeInterval = 60
+    static let defaultBackoffCeiling: TimeInterval = 300
+
     typealias PollAction = () async -> Bool
 
     private let normalInterval: TimeInterval
@@ -13,9 +17,9 @@ actor UsagePoller {
     private var consecutiveFailures = 0
 
     init(
-        normalInterval: TimeInterval = 60,
-        activeInterval: TimeInterval = 60,
-        backoffCeiling: TimeInterval = 300,
+        normalInterval: TimeInterval = UsagePoller.defaultNormalInterval,
+        activeInterval: TimeInterval = UsagePoller.defaultActiveInterval,
+        backoffCeiling: TimeInterval = UsagePoller.defaultBackoffCeiling,
         pollAction: @escaping PollAction
     ) {
         self.normalInterval = normalInterval
