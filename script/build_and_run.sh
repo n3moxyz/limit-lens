@@ -41,6 +41,8 @@ cat > "$INFO_PLIST" <<PLIST
   <key>CFBundleExecutable</key>
   <string>$APP_NAME</string>
   <key>CFBundleIconFile</key>
+  <string>AppIcon.icns</string>
+  <key>CFBundleIconName</key>
   <string>AppIcon</string>
   <key>CFBundleIdentifier</key>
   <string>$BUNDLE_ID</string>
@@ -69,6 +71,12 @@ cat > "$INFO_PLIST" <<PLIST
 PLIST
 
 /usr/bin/codesign --force --deep --sign - "$APP_BUNDLE"
+touch "$APP_BUNDLE"
+
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+if [[ -x "$LSREGISTER" ]]; then
+  "$LSREGISTER" -f "$APP_BUNDLE" >/dev/null 2>&1 || true
+fi
 
 open_app() {
   /usr/bin/open -n "$APP_BUNDLE" --args "$@"

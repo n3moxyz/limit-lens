@@ -5,9 +5,11 @@ struct ProviderDetailView: View {
 
     var snapshot: ProviderSnapshot
     var route: SuggestedRoute
+    var isRefreshing = false
     var showsDemoControls = false
     var notificationStatusMessage: String?
     var showsNotificationSettingsAction = false
+    var onRefresh: () -> Void = {}
     var onSimulateLimitPressure: () -> Void = {}
     var onSimulateResetAvailable: () -> Void = {}
     var onOpenNotificationSettings: () -> Void = {}
@@ -15,6 +17,12 @@ struct ProviderDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                HeaderView(
+                    snapshot: snapshot,
+                    isRefreshing: isRefreshing,
+                    onRefresh: onRefresh
+                )
+
                 SuggestedRouteCard(
                     route: route,
                     showsDemoControls: showsDemoControls,
@@ -24,8 +32,6 @@ struct ProviderDetailView: View {
                     onSimulateResetAvailable: onSimulateResetAvailable,
                     onOpenNotificationSettings: onOpenNotificationSettings
                 )
-
-                HeaderView(snapshot: snapshot)
 
                 if !snapshot.buckets.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
@@ -64,6 +70,8 @@ struct ProviderDetailView: View {
 
 private struct HeaderView: View {
     var snapshot: ProviderSnapshot
+    var isRefreshing: Bool
+    var onRefresh: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -85,6 +93,20 @@ private struct HeaderView: View {
                 Spacer()
 
                 StatePill(state: snapshot.state)
+
+                Button {
+                    onRefresh()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .disabled(isRefreshing)
+                .help("Refresh limits")
+                .accessibilityLabel("Refresh limits")
+                .accessibilityHint("Checks Codex and Claude usage limits now")
+                .accessibilityIdentifier("provider-refresh-limits-button")
             }
 
             Text(snapshot.headline)
@@ -95,9 +117,7 @@ private struct HeaderView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.bottom, 4)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(snapshot.provider.rawValue) status")
-        .accessibilityValue("\(snapshot.headline). \(snapshot.detail)")
+        .accessibilityIdentifier("\(snapshot.provider.rawValue.lowercased())-status-header")
     }
 }
 

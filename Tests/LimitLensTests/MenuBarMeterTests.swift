@@ -40,6 +40,16 @@ struct MenuBarMeterTests {
         #expect(MenuBarMeterPresentation.accessibilitySummary(for: snapshot) == "Codex Live, weekly 8% used")
     }
 
+    @Test("Menu-bar usage tone turns red after eighty five percent")
+    func menuBarUsageToneUsesGreenThenRedShades() {
+        #expect(LimitTheme.usageTone(for: 84.9) == .nominal)
+        #expect(LimitTheme.usageTone(for: 85) == .warning)
+        #expect(LimitTheme.usageTone(for: 94.9) == .warning)
+        #expect(LimitTheme.usageTone(for: 95) == .critical)
+        #expect(LimitTheme.usageTone(for: 99.9) == .critical)
+        #expect(LimitTheme.usageTone(for: 100) == .maxed)
+    }
+
     private func providerSnapshot(windows: [LimitWindow]) -> ProviderSnapshot {
         ProviderSnapshot(
             provider: .codex,

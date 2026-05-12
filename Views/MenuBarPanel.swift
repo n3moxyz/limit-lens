@@ -51,12 +51,12 @@ struct MenuBarPanel: View {
 
                 Spacer()
 
-                Button("Open Window") {
+                Button("Details") {
                     openMainWindowFromPopup()
                 }
                 .font(.caption)
-                .help("Open Limit Lens window")
-                .accessibilityLabel("Open Limit Lens window")
+                .help("Open details")
+                .accessibilityLabel("Open details")
                 .accessibilityIdentifier("open-main-window-button")
             }
         }

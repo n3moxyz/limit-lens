@@ -34,11 +34,16 @@ Cards are reserved for repeated buckets, metrics, and the route summary. The mai
 Settings live in the app’s settings pane:
 
 - Launch at Login
-- Demo Mode
-- Refresh
-- Reset Alerts
+- Limit Alerts with configurable usage threshold, reset warning lead time, and per-provider reset windows
 - Codex Setup
 - Claude Setup
 - Command Sources
+
+The sidebar footer keeps global window controls close at hand:
+
+- Demo Mode
+- Settings
+
+Refresh lives in the provider detail header and in the menu-bar popover.
 
 The app is bundled as an `LSUIElement` menu-bar utility, so the Dock icon is hidden for built app bundles.

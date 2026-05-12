@@ -2,7 +2,10 @@ import Foundation
 import UserNotifications
 
 final class ResetNotificationService: NSObject, UNUserNotificationCenterDelegate {
-    private static let resetPrefix = "limit-lens-reset-"
+    private static let usagePrefix = "limit-lens-usage-"
+    private static let resetWarningPrefix = "limit-lens-reset-warning-"
+    private static let legacyResetPrefix = "limit-lens-reset-"
+    private static let scheduledNotificationIDsDefaultsKey = "LimitLensScheduledNotificationIDs"
     private let center = UNUserNotificationCenter.current()
 
     override init() {
@@ -10,45 +13,57 @@ final class ResetNotificationService: NSObject, UNUserNotificationCenterDelegate
         center.delegate = self
     }
 
-    func syncResetNotifications(codex: ProviderSnapshot, claude: ProviderSnapshot, enabled: Bool) async {
-        guard enabled else {
+    func syncNotifications(
+        codex: ProviderSnapshot,
+        claude: ProviderSnapshot,
+        preferences: LimitNotificationPreferences
+    ) async {
+        let preferences = preferences.normalized()
+        guard preferences.isEnabled else {
             await cancelResetNotifications()
             return
         }
 
         guard await ensureAuthorization() else { return }
 
-        let events = Self.resetEvents(from: [codex, claude])
-        let pendingIDs = await pendingResetNotificationIDs()
+        let events = Self.notificationEvents(from: [codex, claude], preferences: preferences)
+        let pendingIDs = Set(await pendingManagedNotificationIDs())
+        var knownIDs = scheduledNotificationIDs().union(pendingIDs)
         let eventIDs = Set(events.map(\.id))
         let staleIDs = pendingIDs.filter { !eventIDs.contains($0) }
         if !staleIDs.isEmpty {
-            center.removePendingNotificationRequests(withIdentifiers: staleIDs)
+            center.removePendingNotificationRequests(withIdentifiers: Array(staleIDs))
         }
 
         for event in events {
-            guard !pendingIDs.contains(event.id) else { continue }
+            guard !knownIDs.contains(event.id) else { continue }
 
             let content = UNMutableNotificationContent()
             content.title = event.title
             content.body = event.body
             content.sound = .default
 
+            let date = max(event.date, Date().addingTimeInterval(1))
             let components = Calendar.current.dateComponents(
                 [.year, .month, .day, .hour, .minute, .second],
-                from: event.date
+                from: date
             )
             let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
             let request = UNNotificationRequest(identifier: event.id, content: content, trigger: trigger)
-            try? await add(request)
+            if (try? await add(request)) != nil {
+                knownIDs.insert(event.id)
+            }
         }
+
+        saveScheduledNotificationIDs(knownIDs.intersection(eventIDs))
     }
 
     func cancelResetNotifications() async {
-        let ids = await pendingResetNotificationIDs()
+        let ids = await pendingManagedNotificationIDs()
         if !ids.isEmpty {
             center.removePendingNotificationRequests(withIdentifiers: ids)
         }
+        saveScheduledNotificationIDs([])
     }
 
     func deliverDemoLimitPressure() async -> NotificationDeliveryResult {
@@ -75,34 +90,93 @@ final class ResetNotificationService: NSObject, UNUserNotificationCenterDelegate
         completionHandler([.banner, .list, .sound])
     }
 
-    static func resetEvents(
+    static func notificationEvents(
         from snapshots: [ProviderSnapshot],
+        preferences: LimitNotificationPreferences,
         now: Date = Date()
-    ) -> [ResetNotificationEvent] {
+    ) -> [LimitNotificationEvent] {
+        let preferences = preferences.normalized()
+        guard preferences.isEnabled else { return [] }
+
         return snapshots.flatMap { snapshot in
             snapshot.buckets.flatMap { bucket in
-                bucket.windows.compactMap { window in
-                    guard let resetDate = window.resetsAt,
-                          resetDate.timeIntervalSince(now) > 1,
-                          window.usedPercent != nil else {
-                        return nil
-                    }
-
-                    let safeWindowID = window.label
-                        .lowercased()
-                        .replacingOccurrences(of: " ", with: "-")
-                        .replacingOccurrences(of: "/", with: "-")
-                    let resetID = Int(resetDate.timeIntervalSince1970)
-
-                    return ResetNotificationEvent(
-                        id: "\(Self.resetPrefix)\(snapshot.provider.rawValue.lowercased())-\(bucket.id)-\(safeWindowID)-\(resetID)",
-                        title: "\(snapshot.provider.rawValue) reset is ready",
-                        body: "\(window.label) usage has reset. \(snapshot.provider.rawValue) is available for the next task.",
-                        date: resetDate
+                bucket.windows.flatMap { window in
+                    notificationEvents(
+                        snapshot: snapshot,
+                        bucket: bucket,
+                        window: window,
+                        preferences: preferences,
+                        now: now
                     )
                 }
             }
         }
+    }
+
+    private static func notificationEvents(
+        snapshot: ProviderSnapshot,
+        bucket: LimitBucket,
+        window: LimitWindow,
+        preferences: LimitNotificationPreferences,
+        now: Date
+    ) -> [LimitNotificationEvent] {
+        var events: [LimitNotificationEvent] = []
+        let providerKey = eventKey(snapshot.provider.rawValue)
+        let bucketKey = eventKey(bucket.id)
+        let windowKey = eventKey(window.label)
+        let resetKey = window.resetsAt.map { String(Int($0.timeIntervalSince1970)) } ?? "unknown-reset"
+        let resetIsCurrent = window.resetsAt.map { $0.timeIntervalSince(now) > 1 } ?? true
+
+        if preferences.usageThresholdEnabled,
+           resetIsCurrent,
+           let usedPercent = window.usedPercent,
+           usedPercent >= Double(preferences.usageThresholdPercent) {
+            events.append(
+                LimitNotificationEvent(
+                    id: "\(usagePrefix)\(providerKey)-\(bucketKey)-\(windowKey)-\(resetKey)-\(preferences.usageThresholdPercent)",
+                    title: "\(snapshot.provider.rawValue) usage is near limit",
+                    body: "\(window.label) is at \(LimitFormatters.percentString(usedPercent)), above your \(preferences.usageThresholdPercent)% alert.",
+                    date: now.addingTimeInterval(1),
+                    kind: .usageThreshold
+                )
+            )
+        }
+
+        if preferences.resetWarningEnabled,
+           preferences.includesResetWarning(for: snapshot.provider, window: window),
+           let resetDate = window.resetsAt,
+           resetDate.timeIntervalSince(now) > 1,
+           window.usedPercent != nil {
+            let resetID = Int(resetDate.timeIntervalSince1970)
+            let alertDate = max(
+                now.addingTimeInterval(1),
+                resetDate.addingTimeInterval(-preferences.resetWarningLeadTime)
+            )
+            let remaining = LimitFormatters.coarseDuration(resetDate.timeIntervalSince(now))
+
+            events.append(
+                LimitNotificationEvent(
+                    id: "\(resetWarningPrefix)\(providerKey)-\(bucketKey)-\(windowKey)-\(resetID)-\(preferences.resetWarningLeadHours)h",
+                    title: "\(snapshot.provider.rawValue) resets soon",
+                    body: "\(window.label) resets in \(remaining).",
+                    date: alertDate,
+                    kind: .resetWarning
+                )
+            )
+        }
+
+        return events
+    }
+
+    private static func eventKey(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let scalars = value.lowercased().unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? Character(scalar) : "-"
+        }
+        let normalized = String(scalars)
+            .split(separator: "-", omittingEmptySubsequences: true)
+            .joined(separator: "-")
+        return normalized.isEmpty ? "unknown" : normalized
     }
 
     private func deliverDemoEvent(id: String, title: String, body: String) async -> NotificationDeliveryResult {
@@ -162,16 +236,30 @@ final class ResetNotificationService: NSObject, UNUserNotificationCenterDelegate
         }
     }
 
-    private func pendingResetNotificationIDs() async -> [String] {
+    private func pendingManagedNotificationIDs() async -> [String] {
         await withCheckedContinuation { continuation in
             center.getPendingNotificationRequests { requests in
                 continuation.resume(
                     returning: requests
                         .map(\.identifier)
-                        .filter { $0.hasPrefix(Self.resetPrefix) }
+                        .filter(Self.isManagedNotificationID)
                 )
             }
         }
+    }
+
+    private static func isManagedNotificationID(_ id: String) -> Bool {
+        id.hasPrefix(usagePrefix)
+            || id.hasPrefix(resetWarningPrefix)
+            || id.hasPrefix(legacyResetPrefix)
+    }
+
+    private func scheduledNotificationIDs() -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: Self.scheduledNotificationIDsDefaultsKey) ?? [])
+    }
+
+    private func saveScheduledNotificationIDs(_ ids: Set<String>) {
+        UserDefaults.standard.set(Array(ids).sorted(), forKey: Self.scheduledNotificationIDsDefaultsKey)
     }
 
     private func add(_ request: UNNotificationRequest) async throws {
@@ -188,9 +276,15 @@ final class ResetNotificationService: NSObject, UNUserNotificationCenterDelegate
     }
 }
 
-struct ResetNotificationEvent: Equatable {
+enum LimitNotificationEventKind: Equatable {
+    case usageThreshold
+    case resetWarning
+}
+
+struct LimitNotificationEvent: Equatable {
     var id: String
     var title: String
     var body: String
     var date: Date
+    var kind: LimitNotificationEventKind
 }

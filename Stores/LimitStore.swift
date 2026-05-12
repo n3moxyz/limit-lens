@@ -3,16 +3,14 @@ import Foundation
 
 @MainActor
 final class LimitStore: ObservableObject {
-    private static let resetNotificationsDefaultsKey = "LimitLensResetNotificationsEnabled"
-
     @Published var codex = ProviderSnapshot.loading(.codex)
     @Published var claude = ProviderSnapshot.loading(.claude)
     @Published var selectedProvider: ProviderKind = .codex
     @Published var isRefreshing = false
     @Published var isDemoMode: Bool
-    @Published var resetNotificationsEnabled: Bool {
+    @Published var notificationPreferences: LimitNotificationPreferences {
         didSet {
-            UserDefaults.standard.set(resetNotificationsEnabled, forKey: Self.resetNotificationsDefaultsKey)
+            notificationPreferences.save()
         }
     }
     @Published var codexSetupStatus = CodexSetupStatus.checking
@@ -37,7 +35,7 @@ final class LimitStore: ObservableObject {
             || ProcessInfo.processInfo.environment["LIMIT_LENS_DEMO_MODE"] == "1"
 
         isDemoMode = requestedDemoMode
-        resetNotificationsEnabled = UserDefaults.standard.object(forKey: Self.resetNotificationsDefaultsKey) as? Bool ?? true
+        notificationPreferences = LimitNotificationPreferences.load()
     }
 
     var selectedSnapshot: ProviderSnapshot {
@@ -99,16 +97,42 @@ final class LimitStore: ObservableObject {
         }
     }
 
-    func setResetNotificationsEnabled(_ enabled: Bool) {
-        guard resetNotificationsEnabled != enabled else { return }
+    func setNotificationsEnabled(_ enabled: Bool) {
+        updateNotificationPreferences { preferences in
+            preferences.isEnabled = enabled
+        }
+    }
 
-        resetNotificationsEnabled = enabled
+    func setUsageThresholdNotificationsEnabled(_ enabled: Bool) {
+        updateNotificationPreferences { preferences in
+            preferences.usageThresholdEnabled = enabled
+        }
+    }
 
-        Task {
+    func setUsageThresholdPercent(_ percent: Int) {
+        updateNotificationPreferences { preferences in
+            preferences.usageThresholdPercent = percent
+        }
+    }
+
+    func setResetWarningNotificationsEnabled(_ enabled: Bool) {
+        updateNotificationPreferences { preferences in
+            preferences.resetWarningEnabled = enabled
+        }
+    }
+
+    func setResetWarningLeadHours(_ hours: Int) {
+        updateNotificationPreferences { preferences in
+            preferences.resetWarningLeadHours = hours
+        }
+    }
+
+    func setResetWarningWindow(_ window: ResetWarningWindow, enabled: Bool) {
+        updateNotificationPreferences { preferences in
             if enabled {
-                await syncResetNotifications()
+                preferences.resetWarningWindows.insert(window)
             } else {
-                await resetNotificationService.cancelResetNotifications()
+                preferences.resetWarningWindows.remove(window)
             }
         }
     }
@@ -272,11 +296,27 @@ final class LimitStore: ObservableObject {
     }
 
     private func syncResetNotifications() async {
-        await resetNotificationService.syncResetNotifications(
+        await resetNotificationService.syncNotifications(
             codex: codex,
             claude: claude,
-            enabled: resetNotificationsEnabled
+            preferences: notificationPreferences
         )
+    }
+
+    private func updateNotificationPreferences(
+        _ update: (inout LimitNotificationPreferences) -> Void
+    ) {
+        var preferences = notificationPreferences
+        update(&preferences)
+        preferences = preferences.normalized()
+
+        guard preferences != notificationPreferences else { return }
+
+        notificationPreferences = preferences
+
+        Task {
+            await syncResetNotifications()
+        }
     }
 
     private func codexSetupStatus(from snapshot: ProviderSnapshot) -> CodexSetupStatus? {

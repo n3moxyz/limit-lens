@@ -22,6 +22,10 @@ struct ContentView: View {
                 Divider()
 
                 SidebarFooter(
+                    isDemoMode: Binding(
+                        get: { store.isDemoMode },
+                        set: { store.setDemoMode($0) }
+                    ),
                     isSettingsSelected: selectedPane == .settings,
                     onSettings: { selectPane(.settings) }
                 )
@@ -30,31 +34,20 @@ struct ContentView: View {
         } detail: {
             switch selectedPane {
             case .provider:
-                VStack(spacing: 0) {
-                    MainActionStrip(
-                        isDemoMode: Binding(
-                            get: { store.isDemoMode },
-                            set: { store.setDemoMode($0) }
-                        ),
-                        isRefreshing: store.isRefreshing,
-                        onRefresh: {
-                            Task { await store.refreshNow() }
-                        }
-                    )
-
-                    Divider()
-
-                    ProviderDetailView(
-                        snapshot: store.selectedSnapshot,
-                        route: store.suggestedRoute,
-                        showsDemoControls: store.isDemoMode,
-                        notificationStatusMessage: store.notificationStatusMessage,
-                        showsNotificationSettingsAction: store.showsNotificationSettingsAction,
-                        onSimulateLimitPressure: store.simulateDemoLimitPressure,
-                        onSimulateResetAvailable: store.simulateDemoResetAvailable,
-                        onOpenNotificationSettings: store.openNotificationSettings
-                    )
-                }
+                ProviderDetailView(
+                    snapshot: store.selectedSnapshot,
+                    route: store.suggestedRoute,
+                    isRefreshing: store.isRefreshing,
+                    showsDemoControls: store.isDemoMode,
+                    notificationStatusMessage: store.notificationStatusMessage,
+                    showsNotificationSettingsAction: store.showsNotificationSettingsAction,
+                    onRefresh: {
+                        Task { await store.refreshNow() }
+                    },
+                    onSimulateLimitPressure: store.simulateDemoLimitPressure,
+                    onSimulateResetAvailable: store.simulateDemoResetAvailable,
+                    onOpenNotificationSettings: store.openNotificationSettings
+                )
 
             case .settings:
                 SettingsDetailView()
@@ -84,46 +77,8 @@ private enum MainPane: Hashable {
     case settings
 }
 
-private struct MainActionStrip: View {
-    @Binding var isDemoMode: Bool
-    var isRefreshing: Bool
-    var onRefresh: () -> Void
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Spacer()
-
-            Toggle(isOn: $isDemoMode) {
-                Label("Demo Mode", systemImage: "sparkles")
-            }
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            .help("Demo mode")
-            .accessibilityLabel("Demo mode")
-            .accessibilityValue(isDemoMode ? "On" : "Off")
-            .accessibilityHint("Switches between deterministic sample data and live command output")
-            .accessibilityIdentifier("main-demo-mode-toggle")
-
-            Button {
-                onRefresh()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .frame(width: 32, height: 30)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(isRefreshing)
-            .help("Refresh limits")
-            .accessibilityLabel("Refresh limits")
-            .accessibilityHint("Checks Codex and Claude usage limits now")
-            .accessibilityIdentifier("main-refresh-limits-button")
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 8)
-    }
-}
-
 private struct SidebarFooter: View {
+    @Binding var isDemoMode: Bool
     var isSettingsSelected: Bool
     var onSettings: () -> Void
 
@@ -146,7 +101,21 @@ private struct SidebarFooter: View {
             .accessibilityLabel("Settings")
             .accessibilityIdentifier("sidebar-settings-button")
 
-            Spacer()
+            Spacer(minLength: 8)
+
+            Toggle(isOn: $isDemoMode) {
+                Label("Demo", systemImage: "sparkles")
+                    .font(.caption.weight(.medium))
+            }
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .labelStyle(.titleAndIcon)
+            .fixedSize()
+            .help("Demo mode")
+            .accessibilityLabel("Demo mode")
+            .accessibilityValue(isDemoMode ? "On" : "Off")
+            .accessibilityHint("Switches between deterministic sample data and live command output")
+            .accessibilityIdentifier("sidebar-demo-mode-toggle")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

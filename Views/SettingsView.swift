@@ -9,54 +9,94 @@ struct SettingsView: View {
                 LaunchAtLoginSettings(launchAtLogin: store.launchAtLogin)
             }
 
-            Section("Demo") {
-                Toggle(
-                    isOn: Binding(
-                        get: { store.isDemoMode },
-                        set: { store.setDemoMode($0) }
-                    )
-                ) {
-                    Label("Demo Mode", systemImage: "sparkles")
-                }
-                .accessibilityLabel("Demo mode")
-                .accessibilityHint("Uses deterministic sample data instead of live command output")
-                .accessibilityIdentifier("demo-mode-toggle")
-
-                Text("Use deterministic sample data for Codex and Claude during live demos.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Section("Refresh") {
-                HStack {
-                    Text("Interval")
-                    Spacer()
-                    Text(LimitFormatters.coarseDuration(UsagePoller.defaultNormalInterval))
-                        .foregroundStyle(.secondary)
-                }
-
-                Button("Refresh Now") {
-                    Task { await store.refreshNow() }
-                }
-                .disabled(store.isRefreshing)
-                .accessibilityLabel("Refresh limits now")
-                .accessibilityHint("Checks Codex and Claude usage limits now")
-                .accessibilityIdentifier("settings-refresh-limits-button")
-            }
-
             Section("Notifications") {
                 Toggle(
                     isOn: Binding(
-                        get: { store.resetNotificationsEnabled },
-                        set: { store.setResetNotificationsEnabled($0) }
+                        get: { store.notificationPreferences.isEnabled },
+                        set: { store.setNotificationsEnabled($0) }
                     )
                 ) {
-                    Label("Reset Alerts", systemImage: "bell")
+                    Label("Limit Alerts", systemImage: "bell.badge")
                 }
-                .accessibilityLabel("Reset alerts")
-                .accessibilityHint("Schedules a notification when a usage window resets")
-                .accessibilityIdentifier("reset-alerts-toggle")
+                .accessibilityLabel("Limit alerts")
+                .accessibilityHint("Schedules usage and reset warning notifications")
+                .accessibilityIdentifier("limit-alerts-toggle")
+
+                Toggle(
+                    isOn: Binding(
+                        get: { store.notificationPreferences.usageThresholdEnabled },
+                        set: { store.setUsageThresholdNotificationsEnabled($0) }
+                    )
+                ) {
+                    Label("Usage Threshold", systemImage: "gauge")
+                }
+                .disabled(!store.notificationPreferences.isEnabled)
+                .accessibilityLabel("Usage threshold alerts")
+                .accessibilityHint("Notifies when a usage window reaches the selected percentage")
+                .accessibilityIdentifier("usage-threshold-alerts-toggle")
+
+                LabeledContent("Notify at") {
+                    Stepper(
+                        value: Binding(
+                            get: { store.notificationPreferences.usageThresholdPercent },
+                            set: { store.setUsageThresholdPercent($0) }
+                        ),
+                        in: LimitNotificationPreferences.usageThresholdRange,
+                        step: 5
+                    ) {
+                        Text("\(store.notificationPreferences.usageThresholdPercent)%")
+                            .monospacedDigit()
+                    }
+                    .disabled(
+                        !store.notificationPreferences.isEnabled
+                            || !store.notificationPreferences.usageThresholdEnabled
+                    )
+                    .accessibilityLabel("Usage threshold percentage")
+                    .accessibilityValue("\(store.notificationPreferences.usageThresholdPercent) percent")
+                    .accessibilityIdentifier("usage-threshold-stepper")
+                }
+
+                Toggle(
+                    isOn: Binding(
+                        get: { store.notificationPreferences.resetWarningEnabled },
+                        set: { store.setResetWarningNotificationsEnabled($0) }
+                    )
+                ) {
+                    Label("Reset Warning", systemImage: "clock")
+                }
+                .disabled(!store.notificationPreferences.isEnabled)
+                .accessibilityLabel("Reset warning alerts")
+                .accessibilityHint("Notifies before a usage window resets")
+                .accessibilityIdentifier("reset-warning-alerts-toggle")
+
+                LabeledContent("Before reset") {
+                    Stepper(
+                        value: Binding(
+                            get: { store.notificationPreferences.resetWarningLeadHours },
+                            set: { store.setResetWarningLeadHours($0) }
+                        ),
+                        in: LimitNotificationPreferences.resetWarningLeadHoursRange,
+                        step: 1
+                    ) {
+                        Text("\(store.notificationPreferences.resetWarningLeadHours)h")
+                            .monospacedDigit()
+                    }
+                    .disabled(
+                        !store.notificationPreferences.isEnabled
+                            || !store.notificationPreferences.resetWarningEnabled
+                    )
+                    .accessibilityLabel("Reset warning lead time")
+                    .accessibilityValue("\(store.notificationPreferences.resetWarningLeadHours) hours")
+                    .accessibilityIdentifier("reset-warning-lead-stepper")
+                }
+
+                LabeledContent("Notify for") {
+                    ResetWarningWindowPicker()
+                        .disabled(
+                            !store.notificationPreferences.isEnabled
+                                || !store.notificationPreferences.resetWarningEnabled
+                        )
+                }
 
                 Button {
                     store.openNotificationSettings()
@@ -65,11 +105,6 @@ struct SettingsView: View {
                 }
                 .accessibilityLabel("Open notification settings")
                 .accessibilityIdentifier("open-notification-settings-button")
-
-                Text("Limit Lens can notify you when a reported Codex or Claude window becomes available again.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Section("Codex Setup") {
@@ -210,6 +245,50 @@ struct SettingsView: View {
         .task {
             await store.refreshSetupStatuses()
         }
+    }
+}
+
+private struct ResetWarningWindowPicker: View {
+    @EnvironmentObject private var store: LimitStore
+
+    var body: some View {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 8) {
+            GridRow {
+                Text("Codex")
+                    .foregroundStyle(.secondary)
+                ResetWarningWindowToggle(window: .codexFiveHour)
+                ResetWarningWindowToggle(window: .codexWeekly)
+            }
+
+            GridRow {
+                Text("Claude")
+                    .foregroundStyle(.secondary)
+                ResetWarningWindowToggle(window: .claudeFiveHour)
+                ResetWarningWindowToggle(window: .claudeWeekly)
+            }
+        }
+        .font(.callout)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("reset-warning-window-picker")
+    }
+}
+
+private struct ResetWarningWindowToggle: View {
+    @EnvironmentObject private var store: LimitStore
+
+    var window: ResetWarningWindow
+
+    var body: some View {
+        Toggle(
+            window.title,
+            isOn: Binding(
+                get: { store.notificationPreferences.resetWarningWindows.contains(window) },
+                set: { store.setResetWarningWindow(window, enabled: $0) }
+            )
+        )
+        .toggleStyle(.checkbox)
+        .accessibilityLabel("\(window.provider.rawValue) \(window.title) reset warning")
+        .accessibilityIdentifier("reset-warning-window-\(window.rawValue)")
     }
 }
 

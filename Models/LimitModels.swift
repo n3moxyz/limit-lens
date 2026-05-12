@@ -141,6 +141,137 @@ enum NotificationDeliveryResult: Equatable {
     }
 }
 
+struct LimitNotificationPreferences: Equatable {
+    private enum DefaultsKey {
+        static let enabled = "LimitLensResetNotificationsEnabled"
+        static let usageThresholdEnabled = "LimitLensUsageThresholdNotificationsEnabled"
+        static let usageThresholdPercent = "LimitLensUsageThresholdPercent"
+        static let resetWarningEnabled = "LimitLensResetWarningNotificationsEnabled"
+        static let resetWarningLeadHours = "LimitLensResetWarningLeadHours"
+        static let resetWarningWindows = "LimitLensResetWarningWindows"
+    }
+
+    static let usageThresholdRange = 1...100
+    static let resetWarningLeadHoursRange = 1...168
+
+    var isEnabled: Bool
+    var usageThresholdEnabled: Bool
+    var usageThresholdPercent: Int
+    var resetWarningEnabled: Bool
+    var resetWarningLeadHours: Int
+    var resetWarningWindows: Set<ResetWarningWindow> = Set(ResetWarningWindow.allCases)
+
+    static func load(from defaults: UserDefaults = .standard) -> LimitNotificationPreferences {
+        let resetWarningWindows: Set<ResetWarningWindow>
+        if let rawValues = defaults.stringArray(forKey: DefaultsKey.resetWarningWindows) {
+            resetWarningWindows = Set(rawValues.compactMap(ResetWarningWindow.init(rawValue:)))
+        } else {
+            resetWarningWindows = Set(ResetWarningWindow.allCases)
+        }
+
+        return LimitNotificationPreferences(
+            isEnabled: defaults.object(forKey: DefaultsKey.enabled) as? Bool ?? true,
+            usageThresholdEnabled: defaults.object(forKey: DefaultsKey.usageThresholdEnabled) as? Bool ?? true,
+            usageThresholdPercent: defaults.object(forKey: DefaultsKey.usageThresholdPercent) as? Int ?? 80,
+            resetWarningEnabled: defaults.object(forKey: DefaultsKey.resetWarningEnabled) as? Bool ?? true,
+            resetWarningLeadHours: defaults.object(forKey: DefaultsKey.resetWarningLeadHours) as? Int ?? 6,
+            resetWarningWindows: resetWarningWindows
+        ).normalized()
+    }
+
+    func save(to defaults: UserDefaults = .standard) {
+        let preferences = normalized()
+        defaults.set(preferences.isEnabled, forKey: DefaultsKey.enabled)
+        defaults.set(preferences.usageThresholdEnabled, forKey: DefaultsKey.usageThresholdEnabled)
+        defaults.set(preferences.usageThresholdPercent, forKey: DefaultsKey.usageThresholdPercent)
+        defaults.set(preferences.resetWarningEnabled, forKey: DefaultsKey.resetWarningEnabled)
+        defaults.set(preferences.resetWarningLeadHours, forKey: DefaultsKey.resetWarningLeadHours)
+        defaults.set(
+            preferences.resetWarningWindows.map(\.rawValue).sorted(),
+            forKey: DefaultsKey.resetWarningWindows
+        )
+    }
+
+    func normalized() -> LimitNotificationPreferences {
+        var preferences = self
+        preferences.usageThresholdPercent = Self.clamp(
+            usageThresholdPercent,
+            to: Self.usageThresholdRange
+        )
+        preferences.resetWarningLeadHours = Self.clamp(
+            resetWarningLeadHours,
+            to: Self.resetWarningLeadHoursRange
+        )
+        return preferences
+    }
+
+    var resetWarningLeadTime: TimeInterval {
+        TimeInterval(resetWarningLeadHours * 60 * 60)
+    }
+
+    func includesResetWarning(for provider: ProviderKind, window: LimitWindow) -> Bool {
+        guard let resetWarningWindow = ResetWarningWindow.matching(
+            provider: provider,
+            window: window
+        ) else {
+            return false
+        }
+
+        return resetWarningWindows.contains(resetWarningWindow)
+    }
+
+    private static func clamp(_ value: Int, to range: ClosedRange<Int>) -> Int {
+        min(max(value, range.lowerBound), range.upperBound)
+    }
+}
+
+enum ResetWarningWindow: String, CaseIterable, Identifiable {
+    case codexFiveHour
+    case codexWeekly
+    case claudeFiveHour
+    case claudeWeekly
+
+    var id: String { rawValue }
+
+    var provider: ProviderKind {
+        switch self {
+        case .codexFiveHour, .codexWeekly:
+            return .codex
+        case .claudeFiveHour, .claudeWeekly:
+            return .claude
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .codexFiveHour, .claudeFiveHour:
+            return "5-hour"
+        case .codexWeekly, .claudeWeekly:
+            return "Weekly"
+        }
+    }
+
+    static func matching(provider: ProviderKind, window: LimitWindow) -> ResetWarningWindow? {
+        let isFiveHour = window.durationMinutes == 300
+            || window.label.localizedCaseInsensitiveContains("5-hour")
+        let isWeekly = window.durationMinutes == 10_080
+            || window.label.localizedCaseInsensitiveContains("weekly")
+
+        switch (provider, isFiveHour, isWeekly) {
+        case (.codex, true, _):
+            return .codexFiveHour
+        case (.codex, false, true):
+            return .codexWeekly
+        case (.claude, true, _):
+            return .claudeFiveHour
+        case (.claude, false, true):
+            return .claudeWeekly
+        default:
+            return nil
+        }
+    }
+}
+
 struct ClaudeSetupStatus: Equatable {
     var isSignedIn: Bool
     var accountLabel: String

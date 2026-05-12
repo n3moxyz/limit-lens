@@ -109,7 +109,7 @@ private struct ProviderMenuMeter: View {
             return textColor.opacity(0.26)
         }
 
-        return LimitTheme.usageColor(for: usedPercent)
+        return LimitTheme.menuBarUsageColor(for: usedPercent)
     }
 }
 
