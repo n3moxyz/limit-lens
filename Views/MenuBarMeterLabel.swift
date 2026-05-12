@@ -16,13 +16,13 @@ struct MenuBarMeterLabel: View {
     private var renderedImage: NSImage {
         let renderer = ImageRenderer(content: composite)
         renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
-        let image = renderer.nsImage ?? NSImage(size: NSSize(width: 92, height: 18))
+        let image = renderer.nsImage ?? NSImage(size: NSSize(width: 112, height: 18))
         image.isTemplate = false
         return image
     }
 
     private var composite: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 7) {
             ProviderMenuMeter(
                 label: "Cx",
                 snapshot: codex,
@@ -50,8 +50,8 @@ struct MenuBarMeterLabel: View {
 }
 
 private struct ProviderMenuMeter: View {
-    private static let meterWidth: Double = 30
-    private static let meterHeight: Double = 7
+    private static let meterWidth: Double = 40
+    private static let meterHeight: Double = 11
 
     var label: String
     var snapshot: ProviderSnapshot
@@ -66,24 +66,24 @@ private struct ProviderMenuMeter: View {
 
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(textColor.opacity(snapshot.state.isUsable ? 0.18 : 0.10))
+                    .fill(textColor.opacity(snapshot.state.isUsable ? 0.20 : 0.10))
                     .frame(width: Self.meterWidth, height: Self.meterHeight)
 
                 Capsule()
                     .fill(fillColor)
                     .frame(width: fillWidth, height: Self.meterHeight)
+
+                Text(percentText)
+                    .font(.system(size: 8, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(snapshot.state.isUsable ? textColor : textColor.opacity(0.45))
+                    .frame(width: Self.meterWidth, alignment: .center)
             }
             .overlay {
                 Capsule()
                     .strokeBorder(textColor.opacity(snapshot.state.isUsable ? 0.22 : 0.16), lineWidth: 0.75)
             }
-
-            Text(percentText)
-                .font(.system(size: 9, weight: .medium).monospacedDigit())
-                .foregroundStyle(snapshot.state.isUsable ? textColor : textColor.opacity(0.45))
-                .frame(width: 22, alignment: .leading)
         }
-        .frame(height: 14)
+        .frame(height: 15)
     }
 
     private var fillFraction: Double {
@@ -99,8 +99,7 @@ private struct ProviderMenuMeter: View {
             return 0
         }
 
-        let rawWidth = Self.meterWidth * fillFraction
-        return usedPercent > 0 ? max(2.5, rawWidth) : 0
+        return MenuBarMeterSizing.fillWidth(for: usedPercent, meterWidth: Self.meterWidth)
     }
 
     private var percentText: String {
@@ -108,14 +107,16 @@ private struct ProviderMenuMeter: View {
             return "--"
         }
 
-        return "\(Int(usedPercent.rounded()))"
+        return "\(Int(usedPercent.rounded()))%"
     }
 
     private var usedPercent: Double? {
         let windows = snapshot.buckets.flatMap(\.windows)
         let preferredWindow = windows.first { window in
-            window.label.localizedCaseInsensitiveContains("Weekly all-model")
-                || window.label.localizedCaseInsensitiveContains("5-hour")
+            window.label.localizedCaseInsensitiveContains("Weekly")
+                || window.durationMinutes == 10_080
+        } ?? windows.first { window in
+            window.label.localizedCaseInsensitiveContains("5-hour")
                 || window.durationMinutes == 300
         }
 
@@ -123,14 +124,30 @@ private struct ProviderMenuMeter: View {
     }
 
     private var fillColor: Color {
-        guard snapshot.state.isUsable else {
+        guard snapshot.state.isUsable, let usedPercent else {
             return textColor.opacity(0.26)
         }
 
-        guard let usedPercent else {
-            return textColor.opacity(0.26)
+        switch usedPercent {
+        case 85...:
+            return .red
+        case 65..<85:
+            return .orange
+        default:
+            return Color(red: 0.08, green: 0.48, blue: 1.0)
+        }
+    }
+}
+
+enum MenuBarMeterSizing {
+    static func fillWidth(for usedPercent: Double, meterWidth: Double) -> Double {
+        let fillFraction = max(0, min(1, usedPercent / 100))
+        let rawWidth = meterWidth * fillFraction
+
+        guard usedPercent > 0 else {
+            return 0
         }
 
-        return LimitTheme.usageColor(for: usedPercent)
+        return usedPercent < 5 ? max(1, rawWidth) : rawWidth
     }
 }
