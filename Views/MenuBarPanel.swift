@@ -17,12 +17,12 @@ struct MenuBarPanel: View {
                 Button {
                     Task { await store.refreshNow() }
                 } label: {
-                    Label("Refresh Limits", systemImage: "arrow.clockwise")
+                    Label("Refresh", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(.borderless)
                 .disabled(store.isRefreshing)
                 .help("Refresh now")
-                .accessibilityLabel("Refresh limits")
+                .accessibilityLabel("Refresh")
                 .accessibilityHint("Checks Codex and Claude usage limits now")
                 .accessibilityIdentifier("menu-refresh-limits-button")
             }
@@ -43,11 +43,14 @@ struct MenuBarPanel: View {
             Divider()
 
             HStack(spacing: 10) {
-                Text(updatedText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .help(updatedText)
+                TimelineView(.periodic(from: .now, by: 1)) { timeline in
+                    let text = updatedText(relativeTo: timeline.date)
+                    Text(text)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .help(text)
+                }
 
                 Spacer()
 
@@ -71,8 +74,14 @@ struct MenuBarPanel: View {
         focusMainWindowSoon(closing: popupWindow)
     }
 
-    private var updatedText: String {
-        LimitFormatters.updatedText(store.codex.updatedAt ?? store.claude.updatedAt)
+    private func updatedText(relativeTo referenceDate: Date) -> String {
+        LimitFormatters.updatedText(lastUpdatedAt, relativeTo: referenceDate)
+    }
+
+    private var lastUpdatedAt: Date? {
+        [store.codex.updatedAt, store.claude.updatedAt]
+            .compactMap { $0 }
+            .max()
     }
 
     private func focusMainWindowSoon(closing popupWindow: NSWindow?) {
